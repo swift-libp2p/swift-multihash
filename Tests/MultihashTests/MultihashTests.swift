@@ -16,7 +16,7 @@ final class MultihashTests: XCTestCase {
     ///
 
     func testHashFunctions() throws {
-        for test in tests {
+        for test in MultihashTests.TestFixtures {
             do {
                 let mh = try Multihash(raw: test.input, hashedWith: try Codecs(test.algorithm), customByteLength: Int(test.bits)!/8)
                 print(mh.hexString)
@@ -32,7 +32,7 @@ final class MultihashTests: XCTestCase {
     }
     
     func testHashFunctionsManually() throws {
-        for test in tests {
+        for test in MultihashTests.TestFixtures {
             let data = Array(test.input.data(using: .utf8)!)
             //let mh = try encodeBuf(Array(hash.data), code: test.0)
             var hash:[UInt8]
