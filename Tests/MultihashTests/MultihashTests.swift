@@ -2,6 +2,7 @@ import XCTest
 @testable import Multihash
 import Multibase
 import Multicodec
+import VarInt
 
 final class MultihashTests: XCTestCase {
     
@@ -19,13 +20,13 @@ final class MultihashTests: XCTestCase {
         for test in MultihashTests.TestFixtures {
             do {
                 let mh = try Multihash(raw: test.input, hashedWith: try Codecs(test.algorithm), customByteLength: Int(test.bits)!/8)
-                print(mh.hexString)
+                //print(mh.hexString)
                 XCTAssertEqual(mh.asString(base: .base16), test.multihash)
                 XCTAssertEqual(mh.name, test.algorithm)
                 XCTAssertEqual(mh.length, Int(test.bits)!/8)
                 XCTAssertEqual(mh.code, Int(try Codecs(test.algorithm).code))
             } catch {
-                print(error)
+                //print(error)
                 XCTFail(error.localizedDescription)
             }
         }
@@ -49,7 +50,7 @@ final class MultihashTests: XCTestCase {
                 return XCTFail("Unknown hash function...")
             }
             let mh = try encodeMultihashBuffer(Array(hash.prefix(Int(test.bits)!/8)), asHashType: test.algorithm)
-            print(mh.asString(base: .base16))
+            //print(mh.asString(base: .base16))
             XCTAssertEqual(mh.asString(base: .base16), test.multihash)
         }
     }
@@ -76,19 +77,19 @@ final class MultihashTests: XCTestCase {
     
     func testSHA1Tests1() throws {
         let sha = "multihash".data(using: .utf8)!.sha1()
-        print(sha.asString(base: .base16))
-        print(sha.asString(base: .base32))
-        print(sha.asString(base: .base58btc))
-        print(sha.asString(base: .base64))
+        //print(sha.asString(base: .base16))
+        //print(sha.asString(base: .base32))
+        //print(sha.asString(base: .base58btc))
+        //print(sha.asString(base: .base64))
         
-        print()
+        //print()
         if let mh = "multihash".data(using: .utf8) {
             let originalHash = mh.sha1()
             let sha1 = try encodeMultihashBuffer(Array(originalHash), asHashType: Codecs.sha1)
-            print(sha1.asString(base: .base16))
-            print(sha1.asString(base: .base32))
-            print(sha1.asString(base: .base58btc))
-            print(sha1.asString(base: .base64))
+            //print(sha1.asString(base: .base16))
+            //print(sha1.asString(base: .base32))
+            //print(sha1.asString(base: .base58btc))
+            //print(sha1.asString(base: .base64))
             XCTAssertEqual(sha1.asString(base: .base16),         "111488c2f11fb2ce392acb5b2986e640211c4690073e")
             XCTAssertEqual(sha1.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
             XCTAssertEqual(sha1.asString(base: .base58btc),      "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
@@ -103,19 +104,19 @@ final class MultihashTests: XCTestCase {
     
     func testSHA1Tests2() throws {
         let sha = "multihash".data(using: .utf8)!.sha1()
-        print(sha.asString(base: .base16))
-        print(sha.asString(base: .base32))
-        print(sha.asString(base: .base58btc))
-        print(sha.asString(base: .base64))
+        //print(sha.asString(base: .base16))
+        //print(sha.asString(base: .base32))
+        //print(sha.asString(base: .base58btc))
+        //print(sha.asString(base: .base64))
         
-        print()
+        //print()
         if let mh = try? Multihash(raw: "multihash", hashedWith: .sha1) {
             //let originalHash = mh.sha1()
             //let sha1 = try encodeBuf(Array(originalHash), code: SHA1)
-            print(mh.asString(base: .base16))
-            print(mh.asString(base: .base32))
-            print(mh.asString(base: .base58btc))
-            print(mh.asString(base: .base64))
+            //print(mh.asString(base: .base16))
+            //print(mh.asString(base: .base32))
+            //print(mh.asString(base: .base58btc))
+            //print(mh.asString(base: .base64))
             XCTAssertEqual(mh.asString(base: .base16),         "111488c2f11fb2ce392acb5b2986e640211c4690073e")
             XCTAssertEqual(mh.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
             XCTAssertEqual(mh.asString(base: .base58btc),      "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
@@ -128,7 +129,7 @@ final class MultihashTests: XCTestCase {
         }
         
         let b = "multihash".data(using: .utf8)!.sha1().asString(base: .base16, withMultibasePrefix: true) //'multihash' as a base16 hex string with the multibase 'f' prefix
-        print(b)
+        //print(b)
         let mh2 = try Multihash(multibase: b, codec: .sha1)
         XCTAssertEqual(mh2.asString(base: .base16),         "111488c2f11fb2ce392acb5b2986e640211c4690073e")
         XCTAssertEqual(mh2.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
@@ -186,19 +187,19 @@ final class MultihashTests: XCTestCase {
     
     func testSHA2_256Tests1() throws {
         let sha = "multihash".data(using: .utf8)!.sha256()
-        print(sha.asString(base: .base16))
-        print(sha.asString(base: .base32))
-        print(sha.asString(base: .base58btc))
-        print(sha.asString(base: .base64))
+        //print(sha.asString(base: .base16))
+        //print(sha.asString(base: .base32))
+        //print(sha.asString(base: .base58btc))
+        //print(sha.asString(base: .base64))
         
-        print()
+        //print()
         if let mh = "multihash".data(using: .utf8) {
             let originalHash = mh.sha256()
             let sha256 = try encodeMultihashBuffer(Array(originalHash), code: Int(Codecs.sha2_256.code))
-            print(sha256.asString(base: .base16))
-            print(sha256.asString(base: .base32))
-            print(sha256.asString(base: .base58btc))
-            print(sha256.asString(base: .base64))
+            //print(sha256.asString(base: .base16))
+            //print(sha256.asString(base: .base32))
+            //print(sha256.asString(base: .base58btc))
+            //print(sha256.asString(base: .base64))
             XCTAssertEqual(sha256.asString(base: .base16),         "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47")
             XCTAssertEqual(sha256.asString(base: .base32PadUpper), "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY=")
             XCTAssertEqual(sha256.asString(base: .base58btc),      "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
@@ -213,23 +214,23 @@ final class MultihashTests: XCTestCase {
     
     func testSHA2_256Tests2() throws {
         let sha = "multihash".data(using: .utf8)!.sha256()
-        print(sha.asString(base: .base16))
-        print(sha.asString(base: .base32))
-        print(sha.asString(base: .base58btc))
-        print(sha.asString(base: .base64))
+        //print(sha.asString(base: .base16))
+        //print(sha.asString(base: .base32))
+        //print(sha.asString(base: .base58btc))
+        //print(sha.asString(base: .base64))
         
-        print()
+        //print()
         if let mh = try? Multihash(raw: "multihash", hashedWith: .sha2_256, using: .utf8) {
             //let originalHash = mh.sha256()
             //let sha256 = try encodeBuf(Array(originalHash), code: SHA2_256)
-            print(mh.asString(base: .base16))
-            print(mh.asString(base: .base32))
-            print(mh.asString(base: .base58btc))
-            print(mh.asString(base: .base64))
-            print(mh.asMultibase(.base16Upper))
-            print(mh.asMultibase(.base32))
-            print(mh.asMultibase(.base58btc))
-            print(mh.asMultibase(.base64))
+            //print(mh.asString(base: .base16))
+            //print(mh.asString(base: .base32))
+            //print(mh.asString(base: .base58btc))
+            //print(mh.asString(base: .base64))
+            //print(mh.asMultibase(.base16Upper))
+            //print(mh.asMultibase(.base32))
+            //print(mh.asMultibase(.base58btc))
+            //print(mh.asMultibase(.base64))
             XCTAssertEqual(mh.asString(base: .base16),         "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47")
             XCTAssertEqual(mh.asString(base: .base32PadUpper), "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY=")
             XCTAssertEqual(mh.asString(base: .base58btc),      "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
