@@ -1,4 +1,4 @@
-name: test
+name: Manual Test
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ jobs:
   test-matrix:
     strategy:
       matrix:
-        os: [windows-latest]
+        os: [ubuntu-latest, macos-latest]
         swift: ["5.9", "5.8", "5.7"]
     runs-on: ${{ matrix.os }}
     steps:
