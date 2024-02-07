@@ -1,15 +1,15 @@
-name: Swift ${{ matrix.swift }} on ${{ matrix.os }}
+name: test
 
 on:
   workflow_dispatch:
 
 jobs:
   test-matrix:
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
         swift: ["5.9"]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
     - uses: swift-actions/setup-swift@v1
