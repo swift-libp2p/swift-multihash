@@ -1,4 +1,4 @@
-name: Test Dependency Graph
+name: Test Dependency Graph - Dispatch
 
 on:
   workflow_dispatch:
