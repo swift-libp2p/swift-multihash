@@ -32,10 +32,12 @@ jobs:
       matrix:
         provider:
           - swift-libp2p/swift-cid
-        os: [ ${{ github.event.inputs.os }} ]
-        swift: [ '${{ github.event.inputs.swift-version }}' ]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ github.event.inputs.os }}
     steps:
+      - name: Setup swift
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: '${{ github.event.inputs.swift-version }}'
       - name: Check out swift-multihash
         uses: actions/checkout@v4
         with:
