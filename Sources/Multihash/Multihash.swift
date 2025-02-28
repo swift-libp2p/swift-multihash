@@ -181,11 +181,13 @@ public class Multihash: Equatable, CustomStringConvertible {
         self.value = try encodeMultihashBuffer(hashed, asHashType: codec)
     }
 
-    //Computed Props...
+    // MARK: Computed Properties
+
     ///The code of the Hash algorithm used to compute the digest
     public var code: Int? {
         decoded?.code
     }
+
     ///The code of the Hash algorithm used to compute the digest
     public var algorithm: Codecs? {
         if let c = self.code {
@@ -194,14 +196,17 @@ public class Multihash: Equatable, CustomStringConvertible {
             return nil
         }
     }
+
     ///The name of the Hash algorithm used to compute the digest
     public var name: String? {
         decoded?.name
     }
+
     ///Length of the digest in Bytes
     public var length: Int? {
         decoded?.length
     }
+
     ///The hashed digest (without codec and length prefix)
     public var digest: [UInt8]? {
         decoded?.digest
@@ -224,14 +229,17 @@ public class Multihash: Equatable, CustomStringConvertible {
         guard let n = name, let c = code, let l = length, let d = digest else { return "NIL" }
         return String(format: "Multihash: %@ 0x%X %d %@\n", n, c, l, d.asString(base: .base16))
     }
+
     /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
     public var hexString: String {
         self.asString(base: .base16)
     }
+
     /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
     public var b58String: String {
         self.asString(base: .base58btc)
     }
+
     /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
     public var string: String {
         self.hexString

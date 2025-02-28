@@ -147,7 +147,8 @@ final class MultihashTests: XCTestCase {
             XCTAssertEqual(Data(mh.digest!), sha)
         }
 
-        let b = "multihash".data(using: .utf8)!.sha1().asString(base: .base16, withMultibasePrefix: true)  //'multihash' as a base16 hex string with the multibase 'f' prefix
+        //'multihash' as a base16 hex string with the multibase 'f' prefix
+        let b = "multihash".data(using: .utf8)!.sha1().asString(base: .base16, withMultibasePrefix: true)
         //print(b)
         let mh2 = try Multihash(multibase: b, codec: .sha1)
         XCTAssertEqual(mh2.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
