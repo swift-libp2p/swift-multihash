@@ -2,7 +2,7 @@ name: Specific Manual Test
 
 on:
   workflow_dispatch:
-    inputs: 
+    inputs:
       os:
         type: choice
         description: OS
