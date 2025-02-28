@@ -1,9 +1,18 @@
+//===----------------------------------------------------------------------===//
 //
-//  SwiftMultihash.swift
-//  SwiftMultihash
+// This source file is part of the swift-libp2p open source project
+//
+// Copyright (c) 2022-2025 swift-libp2p project authors
+// Licensed under MIT
+//
+// See LICENSE for license information
+// See CONTRIBUTORS for the list of swift-libp2p project authors
+//
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
 //
 //  Created by Matteo Sartori on 18/05/15.
-//  Licensed under MIT See LICENCE for details
 //  Modified by Brandon Toms on 5/1/2022
 
 import Foundation
