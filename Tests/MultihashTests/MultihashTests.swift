@@ -82,7 +82,10 @@ struct MultihashTests {
         let originalHash = "multihash".data(using: .utf8)!.sha1()
 
         let multihash = try Multihash(raw: "multihash", hashedWith: .sha1)
-        print(multihash.description)  //Multihash: sha1 0x11 20 88c2f11fb2ce392acb5b2986e640211c4690073e
+        #expect(
+            multihash.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                == "Multihash: sha1 0x11 20 88c2f11fb2ce392acb5b2986e640211c4690073e"
+        )
         #expect(multihash.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
         #expect(multihash.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
         #expect(multihash.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
