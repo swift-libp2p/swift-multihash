@@ -44,7 +44,7 @@ struct MultihashTests {
             #expect(mh.asString(base: .base16) == test.multihash)
             #expect(mh.name == test.algorithm)
             #expect(mh.length == Int(test.bits)! / 8)
-            #expect(mh.code == Int(try Codecs(test.algorithm).code))
+            #expect(try mh.code == Int(Codecs(test.algorithm).code))
         }
     }
 
@@ -140,7 +140,8 @@ struct MultihashTests {
         #expect(Data(mh.digest!) == sha)
 
         //'multihash' as a base16 hex string with the multibase 'f' prefix
-        let b = try #require("multihash".data(using: .utf8)?.sha1().asString(base: .base16, withMultibasePrefix: true))
+        let bData = try #require("multihash".data(using: .utf8))
+        let b = bData.sha1().asString(base: .base16, withMultibasePrefix: true)
         //print(b)
         let mh2 = try Multihash(multibase: b, codec: .sha1)
         #expect(mh2.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
