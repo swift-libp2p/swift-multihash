@@ -12,14 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Foundation
 import Multibase
 import Multicodec
+import Testing
 import VarInt
-import XCTest
 
 @testable import Multihash
 
-final class MultihashTests: XCTestCase {
+@Suite("Multihash Tests")
+struct MultihashTests {
 
     /// Multihash inits
     /// - from multihash
@@ -31,27 +33,22 @@ final class MultihashTests: XCTestCase {
     ///     raw b58 string
     ///
 
-    func testHashFunctions() throws {
+    @Test func testHashFunctions() throws {
         for test in MultihashTests.TestFixtures {
-            do {
-                let mh = try Multihash(
-                    raw: test.input,
-                    hashedWith: try Codecs(test.algorithm),
-                    customByteLength: Int(test.bits)! / 8
-                )
-                //print(mh.hexString)
-                XCTAssertEqual(mh.asString(base: .base16), test.multihash)
-                XCTAssertEqual(mh.name, test.algorithm)
-                XCTAssertEqual(mh.length, Int(test.bits)! / 8)
-                XCTAssertEqual(mh.code, Int(try Codecs(test.algorithm).code))
-            } catch {
-                //print(error)
-                XCTFail(error.localizedDescription)
-            }
+            let mh = try Multihash(
+                raw: test.input,
+                hashedWith: try Codecs(test.algorithm),
+                customByteLength: Int(test.bits)! / 8
+            )
+            //print(mh.hexString)
+            #expect(mh.asString(base: .base16) == test.multihash)
+            #expect(mh.name == test.algorithm)
+            #expect(mh.length == Int(test.bits)! / 8)
+            #expect(try mh.code == Int(Codecs(test.algorithm).code))
         }
     }
 
-    func testHashFunctionsManually() throws {
+    @Test func testHashFunctionsManually() throws {
         for test in MultihashTests.TestFixtures {
             let data = Array(test.input.data(using: .utf8)!)
             //let mh = try encodeBuf(Array(hash.data), code: test.0)
@@ -66,11 +63,12 @@ final class MultihashTests: XCTestCase {
             case "sha3-512":
                 hash = Array(data).sha3(.sha512)
             default:
-                return XCTFail("Unknown hash function...")
+                Issue.record("Unknown hash function \(test.0)")
+                return
             }
             let mh = try encodeMultihashBuffer(Array(hash.prefix(Int(test.bits)! / 8)), asHashType: test.algorithm)
             //print(mh.asString(base: .base16))
-            XCTAssertEqual(mh.asString(base: .base16), test.multihash)
+            #expect(mh.asString(base: .base16) == test.multihash)
         }
     }
 
@@ -80,107 +78,102 @@ final class MultihashTests: XCTestCase {
     // 5dsgvJGnvAfiR3K6HCBc4hcokSfmjj # sha1 in base58
     // ERSIwvEfss45KstbKYbmQCEcRpAHPg== # sha1 in base64
 
-    func testSHA1() throws {
+    @Test func testSHA1() throws {
         let originalHash = "multihash".data(using: .utf8)!.sha1()
 
         let multihash = try Multihash(raw: "multihash", hashedWith: .sha1)
-        XCTAssertEqual(multihash.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
-        XCTAssertEqual(multihash.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-        XCTAssertEqual(multihash.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-        XCTAssertEqual(multihash.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+        #expect(
+            multihash.description.trimmingCharacters(in: .whitespacesAndNewlines)
+                == "Multihash: sha1 0x11 20 88c2f11fb2ce392acb5b2986e640211c4690073e"
+        )
+        #expect(multihash.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
+        #expect(multihash.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
+        #expect(multihash.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(multihash.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
 
-        XCTAssertEqual(multihash.name, "sha1")
-        XCTAssertEqual(multihash.code, Int(Codecs.sha1.code))
-        XCTAssertEqual(Data(multihash.digest!), originalHash)
+        #expect(multihash.name == "sha1")
+        #expect(multihash.code == Int(Codecs.sha1.code))
+        #expect(Data(multihash.digest!) == originalHash)
     }
 
-    func testSHA1Tests1() throws {
+    @Test func testSHA1Tests1() throws {
+        let mh = try #require("multihash".data(using: .utf8))
+        let originalHash = mh.sha1()
+        let sha1 = try encodeMultihashBuffer(Array(originalHash), asHashType: Codecs.sha1)
+        //print(sha1.asString(base: .base16))
+        //print(sha1.asString(base: .base32))
+        //print(sha1.asString(base: .base58btc))
+        //print(sha1.asString(base: .base64))
+        #expect(sha1.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
+        #expect(sha1.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
+        #expect(sha1.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(sha1.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+
+        let oh = try decodeMultihashBuffer(sha1)
+        #expect(oh.name == "sha1")
+        #expect(oh.code == Int(Codecs.sha1.code))
+        #expect(Data(oh.digest) == originalHash)
+    }
+
+    @Test func testSHA1Tests2() throws {
         let sha = "multihash".data(using: .utf8)!.sha1()
         //print(sha.asString(base: .base16))
         //print(sha.asString(base: .base32))
         //print(sha.asString(base: .base58btc))
         //print(sha.asString(base: .base64))
 
-        //print()
-        if let mh = "multihash".data(using: .utf8) {
-            let originalHash = mh.sha1()
-            let sha1 = try encodeMultihashBuffer(Array(originalHash), asHashType: Codecs.sha1)
-            //print(sha1.asString(base: .base16))
-            //print(sha1.asString(base: .base32))
-            //print(sha1.asString(base: .base58btc))
-            //print(sha1.asString(base: .base64))
-            XCTAssertEqual(sha1.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
-            XCTAssertEqual(sha1.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-            XCTAssertEqual(sha1.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-            XCTAssertEqual(sha1.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
-
-            let oh = try decodeMultihashBuffer(sha1)
-            XCTAssertEqual(oh.name, "sha1")
-            XCTAssertEqual(oh.code, Int(Codecs.sha1.code))
-            XCTAssertEqual(Data(oh.digest), originalHash)
-        }
-    }
-
-    func testSHA1Tests2() throws {
-        let sha = "multihash".data(using: .utf8)!.sha1()
-        //print(sha.asString(base: .base16))
-        //print(sha.asString(base: .base32))
-        //print(sha.asString(base: .base58btc))
-        //print(sha.asString(base: .base64))
-
-        //print()
-        if let mh = try? Multihash(raw: "multihash", hashedWith: .sha1) {
-            //let originalHash = mh.sha1()
-            //let sha1 = try encodeBuf(Array(originalHash), code: SHA1)
-            //print(mh.asString(base: .base16))
-            //print(mh.asString(base: .base32))
-            //print(mh.asString(base: .base58btc))
-            //print(mh.asString(base: .base64))
-            XCTAssertEqual(mh.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
-            XCTAssertEqual(mh.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-            XCTAssertEqual(mh.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-            XCTAssertEqual(mh.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
-
-            //let oh = try decodeBuf(sha1)
-            XCTAssertEqual(mh.name, "sha1")
-            XCTAssertEqual(mh.code, Int(Codecs.sha1.code))
-            XCTAssertEqual(Data(mh.digest!), sha)
-        }
-
-        //'multihash' as a base16 hex string with the multibase 'f' prefix
-        let b = "multihash".data(using: .utf8)!.sha1().asString(base: .base16, withMultibasePrefix: true)
-        //print(b)
-        let mh2 = try Multihash(multibase: b, codec: .sha1)
-        XCTAssertEqual(mh2.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
-        XCTAssertEqual(mh2.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-        XCTAssertEqual(mh2.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-        XCTAssertEqual(mh2.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+        let mh = try Multihash(raw: "multihash", hashedWith: .sha1)
+        //let originalHash = mh.sha1()
+        //let sha1 = try encodeBuf(Array(originalHash), code: SHA1)
+        //print(mh.asString(base: .base16))
+        //print(mh.asString(base: .base32))
+        //print(mh.asString(base: .base58btc))
+        //print(mh.asString(base: .base64))
+        #expect(mh.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
+        #expect(mh.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
+        #expect(mh.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(mh.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
 
         //let oh = try decodeBuf(sha1)
-        XCTAssertEqual(mh2.name, "sha1")
-        XCTAssertEqual(mh2.code, Int(Codecs.sha1.code))
-        XCTAssertEqual(Data(mh2.digest!), sha)
+        #expect(mh.name == "sha1")
+        #expect(mh.code == Int(Codecs.sha1.code))
+        #expect(Data(mh.digest!) == sha)
+
+        //'multihash' as a base16 hex string with the multibase 'f' prefix
+        let bData = try #require("multihash".data(using: .utf8))
+        let b = bData.sha1().asString(base: .base16, withMultibasePrefix: true)
+        //print(b)
+        let mh2 = try Multihash(multibase: b, codec: .sha1)
+        #expect(mh2.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
+        #expect(mh2.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
+        #expect(mh2.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(mh2.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+
+        //let oh = try decodeBuf(sha1)
+        #expect(mh2.name == "sha1")
+        #expect(mh2.code == Int(Codecs.sha1.code))
+        #expect(Data(mh2.digest!) == sha)
 
         //<base encoding> <hash type> <hash length> <hash>
         //       f             11           14        ...
         //   hex lower        sha1       20 bytes
         let mh3 = try Multihash(multihash: "f111488c2f11fb2ce392acb5b2986e640211c4690073e")
-        XCTAssertEqual(mh3.asString(base: .base32PadUpper), "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-        XCTAssertEqual(mh3.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-        XCTAssertEqual(mh3.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+        #expect(mh3.asString(base: .base32PadUpper) == "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
+        #expect(mh3.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(mh3.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
 
-        XCTAssertEqual(mh3.name, "sha1")
-        XCTAssertEqual(mh3.code, Int(Codecs.sha1.code))
-        XCTAssertEqual(Data(mh3.digest!), sha)
+        #expect(mh3.name == "sha1")
+        #expect(mh3.code == Int(Codecs.sha1.code))
+        #expect(Data(mh3.digest!) == sha)
 
         let mh4 = try Multihash(multihash: "CCEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A====")
-        XCTAssertEqual(mh4.asString(base: .base16), "111488c2f11fb2ce392acb5b2986e640211c4690073e")
-        XCTAssertEqual(mh4.asString(base: .base58btc), "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
-        XCTAssertEqual(mh4.asString(base: .base64Pad), "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
+        #expect(mh4.asString(base: .base16) == "111488c2f11fb2ce392acb5b2986e640211c4690073e")
+        #expect(mh4.asString(base: .base58btc) == "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj")
+        #expect(mh4.asString(base: .base64Pad) == "ERSIwvEfss45KstbKYbmQCEcRpAHPg==")
 
-        XCTAssertEqual(mh4.name, "sha1")
-        XCTAssertEqual(mh4.code, Int(Codecs.sha1.code))
-        XCTAssertEqual(Data(mh4.digest!), sha)
+        #expect(mh4.name == "sha1")
+        #expect(mh4.code == Int(Codecs.sha1.code))
+        #expect(Data(mh4.digest!) == sha)
 
     }
 
@@ -190,27 +183,49 @@ final class MultihashTests: XCTestCase {
     // QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk # sha256 in base58
     // EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw== # sha256 in base64
 
-    func testSHA2_256() throws {
+    @Test func testSHA2_256() throws {
         let originalHash = "multihash".data(using: .utf8)!.sha256()
 
         let multihash = try Multihash(raw: "multihash", hashedWith: .sha2_256)
-        XCTAssertEqual(
-            multihash.asString(base: .base16),
-            "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
+        #expect(
+            multihash.asString(base: .base16) == "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
         )
-        XCTAssertEqual(
-            multihash.asString(base: .base32PadUpper),
-            "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
+        #expect(
+            multihash.asString(base: .base32PadUpper) == "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
         )
-        XCTAssertEqual(multihash.asString(base: .base58btc), "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
-        XCTAssertEqual(multihash.asString(base: .base64Pad), "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
+        #expect(multihash.asString(base: .base58btc) == "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
+        #expect(multihash.asString(base: .base64Pad) == "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
 
-        XCTAssertEqual(multihash.name, "sha2-256")
-        XCTAssertEqual(multihash.code, Int(Codecs.sha2_256.code))
-        XCTAssertEqual(Data(multihash.digest!), originalHash)
+        #expect(multihash.name == "sha2-256")
+        #expect(multihash.code == Int(Codecs.sha2_256.code))
+        #expect(Data(multihash.digest!) == originalHash)
     }
 
-    func testSHA2_256Tests1() throws {
+    @Test func testSHA2_256Tests1() throws {
+        let mh = try #require("multihash".data(using: .utf8))
+        let originalHash = mh.sha256()
+        let sha256 = try encodeMultihashBuffer(Array(originalHash), code: Int(Codecs.sha2_256.code))
+        //print(sha256.asString(base: .base16))
+        //print(sha256.asString(base: .base32))
+        //print(sha256.asString(base: .base58btc))
+        //print(sha256.asString(base: .base64))
+        #expect(
+            sha256.asString(base: .base16) == "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
+        )
+        #expect(
+            sha256.asString(base: .base32PadUpper) == "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
+        )
+        #expect(sha256.asString(base: .base58btc) == "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
+        #expect(sha256.asString(base: .base64Pad) == "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
+
+        let oh = try decodeMultihashBuffer(sha256)
+        #expect(oh.name == "sha2-256")
+        #expect(oh.code == Int(Codecs.sha2_256.code))
+        #expect(Data(oh.digest) == originalHash)
+
+    }
+
+    @Test func testSHA2_256Tests2() throws {
         let sha = "multihash".data(using: .utf8)!.sha256()
         //print(sha.asString(base: .base16))
         //print(sha.asString(base: .base32))
@@ -218,76 +233,29 @@ final class MultihashTests: XCTestCase {
         //print(sha.asString(base: .base64))
 
         //print()
-        if let mh = "multihash".data(using: .utf8) {
-            let originalHash = mh.sha256()
-            let sha256 = try encodeMultihashBuffer(Array(originalHash), code: Int(Codecs.sha2_256.code))
-            //print(sha256.asString(base: .base16))
-            //print(sha256.asString(base: .base32))
-            //print(sha256.asString(base: .base58btc))
-            //print(sha256.asString(base: .base64))
-            XCTAssertEqual(
-                sha256.asString(base: .base16),
-                "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
-            )
-            XCTAssertEqual(
-                sha256.asString(base: .base32PadUpper),
-                "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
-            )
-            XCTAssertEqual(sha256.asString(base: .base58btc), "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
-            XCTAssertEqual(sha256.asString(base: .base64Pad), "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
+        let mh = try Multihash(raw: "multihash", hashedWith: .sha2_256, using: .utf8)
+        //let originalHash = mh.sha256()
+        //let sha256 = try encodeBuf(Array(originalHash), code: SHA2_256)
+        //print(mh.asString(base: .base16))
+        //print(mh.asString(base: .base32))
+        //print(mh.asString(base: .base58btc))
+        //print(mh.asString(base: .base64))
+        //print(mh.asMultibase(.base16Upper))
+        //print(mh.asMultibase(.base32))
+        //print(mh.asMultibase(.base58btc))
+        //print(mh.asMultibase(.base64))
+        #expect(
+            mh.asString(base: .base16) == "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
+        )
+        #expect(
+            mh.asString(base: .base32PadUpper) == "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
+        )
+        #expect(mh.asString(base: .base58btc) == "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
+        #expect(mh.asString(base: .base64Pad) == "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
 
-            let oh = try decodeMultihashBuffer(sha256)
-            XCTAssertEqual(oh.name, "sha2-256")
-            XCTAssertEqual(oh.code, Int(Codecs.sha2_256.code))
-            XCTAssertEqual(Data(oh.digest), originalHash)
-        }
+        //let oh = try decodeBuf(sha256)
+        #expect(mh.name == "sha2-256")
+        #expect(mh.code == Int(Codecs.sha2_256.code))
+        #expect(Data(mh.digest!) == sha)
     }
-
-    func testSHA2_256Tests2() throws {
-        let sha = "multihash".data(using: .utf8)!.sha256()
-        //print(sha.asString(base: .base16))
-        //print(sha.asString(base: .base32))
-        //print(sha.asString(base: .base58btc))
-        //print(sha.asString(base: .base64))
-
-        //print()
-        if let mh = try? Multihash(raw: "multihash", hashedWith: .sha2_256, using: .utf8) {
-            //let originalHash = mh.sha256()
-            //let sha256 = try encodeBuf(Array(originalHash), code: SHA2_256)
-            //print(mh.asString(base: .base16))
-            //print(mh.asString(base: .base32))
-            //print(mh.asString(base: .base58btc))
-            //print(mh.asString(base: .base64))
-            //print(mh.asMultibase(.base16Upper))
-            //print(mh.asMultibase(.base32))
-            //print(mh.asMultibase(.base58btc))
-            //print(mh.asMultibase(.base64))
-            XCTAssertEqual(
-                mh.asString(base: .base16),
-                "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
-            )
-            XCTAssertEqual(
-                mh.asString(base: .base32PadUpper),
-                "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
-            )
-            XCTAssertEqual(mh.asString(base: .base58btc), "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk")
-            XCTAssertEqual(mh.asString(base: .base64Pad), "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw==")
-
-            //let oh = try decodeBuf(sha256)
-            XCTAssertEqual(mh.name, "sha2-256")
-            XCTAssertEqual(mh.code, Int(Codecs.sha2_256.code))
-            XCTAssertEqual(Data(mh.digest!), sha)
-        }
-    }
-
-    static var allTests = [
-        ("testHashFunctions", testHashFunctions),
-        ("testHashFunctionsManually", testHashFunctionsManually),
-        ("testSHA1", testSHA1),
-        ("testSHA1Tests1", testSHA1Tests1),
-        ("testSHA1Tests2", testSHA1Tests2),
-        ("testSHA2_256", testSHA2_256),
-        ("testSHA2_256Tests1", testSHA2_256Tests1),
-        ("testSHA2_256Tests2", testSHA2_256Tests2),
-    ]
 }
