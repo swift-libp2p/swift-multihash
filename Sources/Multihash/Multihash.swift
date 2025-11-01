@@ -59,27 +59,27 @@ extension MultihashError {
     }
 }
 
-public class Multihash: Equatable, CustomStringConvertible {
+public struct Multihash: Sendable, Equatable, CustomStringConvertible {
     public let value: [UInt8]
-    private lazy var decoded: DecodedMultihash? = {
+    private var decoded: DecodedMultihash? {
         try? decodeMultihashBuffer(value)
-    }()
+    }
 
-    /// Should we check to make sure we can decode it?
+    /// Initialize a Multihash from a raw byte array
     public init(_ buf: [UInt8]) throws {
-        let de = try decodeMultihashBuffer(buf)
+        // Ensure we can decode it before initializing
+        let _ = try decodeMultihashBuffer(buf)
         self.value = buf
-        self.decoded = de
     }
 
-    /// A Hex Encoded String
+    /// Initialize a Multihash from a Hex Encoded String
     public init(hexString str: String) throws {
-        self.value = try fromHexString(str).value
+        self = try fromHexString(str)
     }
 
-    /// A B58 Encoded String
+    /// Initialize a Multihash from a B58 Encoded String
     public init(b58String str: String) throws {
-        self.value = try fromB58String(str).value
+        self = try fromB58String(str)
     }
 
     /// A Multibase Encoded Hash
@@ -89,7 +89,7 @@ public class Multihash: Equatable, CustomStringConvertible {
         //self.value = try cast(Array(d.data)).value
     }
 
-    /// A Multibase compliant Multihash String
+    /// Initialize a Multihash from a Multibase compliant Multihash String
     /// ```
     /// //Example
     /// // "f111488c2f11fb2ce392acb5b2986e640211c4690073e"
@@ -100,12 +100,12 @@ public class Multihash: Equatable, CustomStringConvertible {
     /// print(mh.code) // =>  0x11
     /// print(mh.digest.hexString) // => "88c2f11fb2ce392acb5b2986e640211c4690073e"
     /// ```
-    public convenience init(multihash: String) throws {
+    public init(multihash: String) throws {
         let raw = try BaseEncoding.decode(multihash)
         try self.init(multihash: raw.data)
     }
-    /// A Multihash Data Buffer
-    public convenience init(multihash: Data) throws {
+    /// Initialize a Multihash from a Multibase compliant Multihash Data Buffer
+    public init(multihash: Data) throws {
         let buf = Array(multihash)
         try self.init(buf)
     }
@@ -119,7 +119,7 @@ public class Multihash: Equatable, CustomStringConvertible {
     /// print(mh.asString(base: .base58btc) // => "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
     /// print(mh.asString(base: .base64)    // => "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw=="
     /// ```
-    public convenience init(
+    public init(
         raw: String,
         hashedWith codec: Codecs,
         using encoding: String.Encoding = .utf8,
@@ -136,7 +136,7 @@ public class Multihash: Equatable, CustomStringConvertible {
     //        try self.init(raw: raw, hashedWith: codec, using: encoding, customByteLength: bytes)
     //    }
 
-    public convenience init(raw: Data, hashedWith codec: Codecs, customByteLength: Int? = nil) throws {
+    public init(raw: Data, hashedWith codec: Codecs, customByteLength: Int? = nil) throws {
         try self.init(raw: Array(raw), hashedWith: codec, customByteLength: customByteLength)
     }
 
