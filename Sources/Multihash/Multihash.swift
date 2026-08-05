@@ -59,7 +59,7 @@ extension MultihashError {
     }
 }
 
-public struct Multihash: Sendable, Equatable, CustomStringConvertible {
+public struct Multihash: Sendable, Hashable, CustomStringConvertible {
     public let value: [UInt8]
     private var decoded: DecodedMultihash? {
         try? decodeMultihashBuffer(value)
@@ -246,8 +246,28 @@ public struct Multihash: Sendable, Equatable, CustomStringConvertible {
     }
 }
 
-public func == (lhs: Multihash, rhs: Multihash) -> Bool {
-    lhs.value == rhs.value
+extension Multihash {
+    public static func == (lhs: Multihash, rhs: Multihash) -> Bool {
+        lhs.value == rhs.value
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(value)
+    }
+}
+
+extension Multihash: Codable {
+    /// Decodes a Multihash from its raw multihash byte buffer.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        try self.init(try container.decode([UInt8].self))
+    }
+
+    /// Encodes the Multihash as its raw multihash byte buffer.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
 }
 
 extension Codecs {
