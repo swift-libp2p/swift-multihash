@@ -85,8 +85,10 @@ public struct Multihash: Sendable, Hashable, CustomStringConvertible {
     /// A Multibase Encoded Hash
     public init(multibase: String, codec: Codecs) throws {
         let d = try BaseEncoding.decode(multibase)
-        self.value = try encodeMultihashBuffer(Array(d.data), asHashType: codec)
-        //self.value = try cast(Array(d.data)).value
+        let v = try encodeMultihashBuffer(Array(d.data), asHashType: codec)
+        // Ensure the produced buffer round-trips before initializing
+        let _ = try decodeMultihashBuffer(v)
+        self.value = v
     }
 
     /// Initialize a Multihash from a Multibase compliant Multihash String
@@ -178,7 +180,10 @@ public struct Multihash: Sendable, Hashable, CustomStringConvertible {
         /// Constrain to custom byte length if one was specified
         if let bytes = customByteLength { hashed = Array(hashed.prefix(bytes)) }
 
-        self.value = try encodeMultihashBuffer(hashed, asHashType: codec)
+        let v = try encodeMultihashBuffer(hashed, asHashType: codec)
+        // Ensure the produced buffer round-trips before initializing (catches encode/decode drift)
+        let _ = try decodeMultihashBuffer(v)
+        self.value = v
     }
 
     // MARK: Computed Properties
