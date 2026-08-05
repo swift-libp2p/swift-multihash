@@ -35,7 +35,7 @@ let package = Package(
     ...
     dependencies: [
         ...
-        .package(url: "https://github.com/swift-libp2p/swift-multihash.git", .upToNextMajor(from: "0.0.1"))
+        .package(url: "https://github.com/swift-libp2p/swift-multihash.git", .upToNextMinor(from: "0.2.0"))
     ],
     ...
         .target(
@@ -109,6 +109,8 @@ Multihash(:[UInt8]) throws
 Multihash(hexString str:String) throws
 Multihash(b58String str:String) throws
 Multihash(multibase:String, codec:Codecs) throws
+Multihash(digest:[UInt8], code:Codecs) throws  // wrap a precomputed digest without re-hashing
+Multihash(raw:String, hashedWith:Codecs, customByteLength:Int?) throws
 
 
 /// Properties
@@ -124,6 +126,11 @@ Multihash.asString(base: BaseEncoding) -> String
 Multihash.hexString:String
 Multihash.b58String:String
 
+/// Verification
+Multihash.matches(raw:[UInt8]) -> Bool  // re-hash `raw` and compare against this multihash
+Multihash.matches(raw:Data) -> Bool
+
+/// Multihash is a value type conforming to Sendable, Hashable & Codable
 ```
 
 ## Contributing
@@ -139,4 +146,4 @@ Let's make this code better together! 🤝
 
 ## License
 
-[MIT](LICENSE) © 2022 Breth Inc.
+[MIT](LICENSE) © 2026 Breth Inc.
