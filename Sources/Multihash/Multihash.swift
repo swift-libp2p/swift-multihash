@@ -232,7 +232,9 @@ public struct Multihash: Sendable, Hashable, CustomStringConvertible {
     /// reproduces this exact multihash. Useful for verifying that a payload matches a known hash.
     public func matches(raw: [UInt8]) -> Bool {
         guard let algorithm = algorithm, let length = length else { return false }
-        guard let other = try? Multihash(raw: raw, hashedWith: algorithm, customByteLength: length) else { return false }
+        guard let other = try? Multihash(raw: raw, hashedWith: algorithm, customByteLength: length) else {
+            return false
+        }
         return other == self
     }
 
