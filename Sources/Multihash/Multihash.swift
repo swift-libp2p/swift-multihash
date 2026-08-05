@@ -310,7 +310,7 @@ extension Codecs {
 
     public var defaultHashLength: Int? {
         switch self {
-        case .md5: return 20
+        case .md5: return 16
         case .sha1: return 20
         case .sha3_224, .keccak_224: return 28
         case .sha2_256, .sha3_256, .keccak_256: return 32
