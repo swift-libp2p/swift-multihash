@@ -43,7 +43,8 @@ struct MultihashRegressionTests {
         #expect(mh.code == 0xd5)
         #expect(mh.name == "md5")
         #expect(mh.length == 16)
-        #expect(mh.digest.map(Data.init) == "multihash".data(using: .utf8)!.md5())
+        let expectedDigest = "multihash".data(using: .utf8)!.md5()
+        #expect(mh.digest.map({ Data($0) }) == expectedDigest)
 
         // Round-trips through a fresh decode
         #expect(try Multihash(mh.value) == mh)
