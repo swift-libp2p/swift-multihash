@@ -59,7 +59,7 @@ extension MultihashError {
     }
 }
 
-public struct Multihash: Sendable, Hashable, CustomStringConvertible {
+public struct Multihash: Sendable, Hashable, Equatable, CustomStringConvertible {
     public let value: [UInt8]
     private var decoded: DecodedMultihash? {
         try? decodeMultihashBuffer(value)
