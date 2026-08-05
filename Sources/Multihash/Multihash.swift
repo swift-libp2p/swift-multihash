@@ -72,6 +72,17 @@ public struct Multihash: Sendable, Hashable, CustomStringConvertible {
         self.value = buf
     }
 
+    /// Wraps an already-computed digest with the given codec, without re-hashing it.
+    /// ```
+    /// //Example
+    /// let digest = "multihash".data(using: .utf8)!.sha1() // 88c2f11fb2ce392acb5b2986e640211c4690073e
+    /// let mh = try Multihash(digest: Array(digest), code: .sha1)
+    /// print(mh.asString(base: .base16)) // => "111488c2f11fb2ce392acb5b2986e640211c4690073e"
+    /// ```
+    public init(digest: [UInt8], code: Codecs) throws {
+        try self.init(encodeMultihashBuffer(digest, asHashType: code))
+    }
+
     /// Initialize a Multihash from a Hex Encoded String
     public init(hexString str: String) throws {
         self = try fromHexString(str)
@@ -215,6 +226,20 @@ public struct Multihash: Sendable, Hashable, CustomStringConvertible {
     ///The hashed digest (without codec and length prefix)
     public var digest: [UInt8]? {
         decoded?.digest
+    }
+
+    /// Returns `true` if hashing `raw` with this multihash's algorithm (and digest length)
+    /// reproduces this exact multihash. Useful for verifying that a payload matches a known hash.
+    public func matches(raw: [UInt8]) -> Bool {
+        guard let algorithm = algorithm, let length = length else { return false }
+        guard let other = try? Multihash(raw: raw, hashedWith: algorithm, customByteLength: length) else { return false }
+        return other == self
+    }
+
+    /// Returns `true` if hashing `raw` with this multihash's algorithm (and digest length)
+    /// reproduces this exact multihash.
+    public func matches(raw: Data) -> Bool {
+        matches(raw: Array(raw))
     }
 
     ///The entire multihash value (prefix's included) as a multibase compliant string in the specified base
