@@ -41,15 +41,15 @@ extension MultihashError {
             case .unknownCode:
                 return "Unknown multihash code."
             case .hashTooShort:
-                return "Multihash too short. Must be > 3 bytes"
+                return "Multihash too short. Must be at least 2 bytes"
             case .hashTooLong:
-                return "Multihash too long. Must be < 129 bytes"
+                return "Multihash too long. Digest length exceeds Int32.max"
             case .VarIntBufferTooShort:
                 return "Unsigned Variable Integer buffer too short."
             case .VarIntTooLarge:
                 return "Unsigned Variable int is too big. Max is 64 bits."
             case .lengthNotSupported:
-                return "Multihash does not yet support digests longer than 127 bytes"
+                return "Multihash digest length is too large to encode"
             case .hexConversionFail:
                 return "Error occurred in hex conversion."
             case .inconsistentLength(let len):
