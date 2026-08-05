@@ -386,7 +386,9 @@ private func cast(_ buf: [UInt8]) throws -> Multihash {
 /// ```
 public func decodeMultihashBuffer(_ buf: [UInt8]) throws -> DecodedMultihash {
 
-    if buf.count < 3 {
+    // A valid multihash is at minimum two bytes: a code varint and a length varint
+    // (e.g. an empty `identity` digest is `0x00 0x00`).
+    if buf.count < 2 {
         throw MultihashError.hashTooShort
     }
 
@@ -397,7 +399,10 @@ public func decodeMultihashBuffer(_ buf: [UInt8]) throws -> DecodedMultihash {
         throw MultihashError.hashTooLong
     }
 
-    let dm = DecodedMultihash(code: Int(code), name: try Codecs(code).name, length: Int(digestLength), digest: digest)
+    // Tolerate well-formed multihashes whose code isn't in our codec table by decoding
+    // with a `nil` name rather than failing the whole decode.
+    let name = (try? Codecs(code))?.name
+    let dm = DecodedMultihash(code: Int(code), name: name, length: Int(digestLength), digest: digest)
 
     /// This is usually triggered when we try and instantiate a CID or PeerID as a Multihash...
     if dm.digest.count != dm.length {
@@ -420,12 +425,13 @@ public func decodeMultihashBuffer(_ buf: [UInt8]) throws -> DecodedMultihash {
 /// let multihashBuffer = try encodeMultihashBuffer(hash, code: 0x11) // 111488c2f11fb2ce392acb5b2986e640211c4690073e
 /// ```
 public func encodeMultihashBuffer(_ buf: [UInt8], code: Int?) throws -> [UInt8] {
-    if validCode(code) == false {
+    guard let code = code, validCode(code) else {
         throw MultihashError.unknownCode
     }
 
-    if buf.count > 129 {
-        throw MultihashError.hashTooLong
+    // The digest length is stored as a varint; keep it within the range the decoder accepts.
+    if buf.count > Int(Int32.max) {
+        throw MultihashError.lengthNotSupported
     }
 
     var pre = [0, 0] as [UInt8]
