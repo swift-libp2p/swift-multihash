@@ -434,10 +434,10 @@ public func encodeMultihashBuffer(_ buf: [UInt8], code: Int?) throws -> [UInt8] 
         throw MultihashError.lengthNotSupported
     }
 
-    var pre = [0, 0] as [UInt8]
-
-    pre[0] = UInt8(code!)
-    pre[1] = UInt8(buf.count)
+    // Multihash format: <varint hash function code><varint digest size in bytes><digest bytes>
+    // Both prefixes MUST be unsigned varints so codes/lengths >= 128 (e.g. md5 == 0xd5) round-trip.
+    var pre = putUVarInt(UInt64(code))
+    pre.append(contentsOf: putUVarInt(UInt64(buf.count)))
     pre.append(contentsOf: buf)
 
     return pre
