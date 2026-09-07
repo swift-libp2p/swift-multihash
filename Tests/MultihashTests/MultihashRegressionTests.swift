@@ -87,8 +87,8 @@ struct MultihashRegressionTests {
 
     @Test func decodeToleratesUnknownCode() throws {
         let unknownCode: UInt64 = 0x7FFF_FF00  // not present in the multicodec table
-        var buf = putUVarInt(unknownCode)
-        buf.append(contentsOf: putUVarInt(2))
+        var buf = unknownCode.varIntBytes.bytes
+        buf.append(contentsOf: 2.varIntBytes.bytes)
         buf.append(contentsOf: [0xAA, 0xBB])
 
         let decoded = try decodeMultihashBuffer(buf)  // must not throw
