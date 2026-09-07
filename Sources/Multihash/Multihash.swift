@@ -2,7 +2,7 @@
 //
 // This source file is part of the swift-libp2p open source project
 //
-// Copyright (c) 2022-2025 swift-libp2p project authors
+// Copyright (c) 2022-2026 swift-libp2p project authors
 // Licensed under MIT
 //
 // See LICENSE for license information
@@ -21,43 +21,6 @@ import Foundation
 import Multibase
 import Multicodec
 import VarInt
-
-public enum MultihashError: Error {
-    case unknownCode
-    case hashTooShort
-    case hashTooLong
-    case VarIntBufferTooShort
-    case VarIntTooLarge
-    case lengthNotSupported
-    case hexConversionFail
-    case inconsistentLength(Int)
-}
-
-// English language error strings.
-extension MultihashError {
-    var description: String {
-        get {
-            switch self {
-            case .unknownCode:
-                return "Unknown multihash code."
-            case .hashTooShort:
-                return "Multihash too short. Must be at least 2 bytes"
-            case .hashTooLong:
-                return "Multihash too long. Digest length exceeds Int32.max"
-            case .VarIntBufferTooShort:
-                return "Unsigned Variable Integer buffer too short."
-            case .VarIntTooLarge:
-                return "Unsigned Variable int is too big. Max is 64 bits."
-            case .lengthNotSupported:
-                return "Multihash digest length is too large to encode"
-            case .hexConversionFail:
-                return "Error occurred in hex conversion."
-            case .inconsistentLength(let len):
-                return "Multihash length inconsistent. \(len)"
-            }
-        }
-    }
-}
 
 public struct Multihash: Sendable, Hashable, Equatable, CustomStringConvertible {
     public let value: [UInt8]
@@ -207,7 +170,7 @@ public struct Multihash: Sendable, Hashable, Equatable, CustomStringConvertible 
     ///The code of the Hash algorithm used to compute the digest
     public var algorithm: Codecs? {
         if let c = self.code {
-            return try? Codecs(c)
+            return try? Codecs(code: c)
         } else {
             return nil
         }
@@ -341,12 +304,17 @@ public struct DecodedMultihash {
 /// - Returns: the size as an int64 and the buffer with the uvarint indicating size removed.
 /// - Throws: MultihashError
 private func uVarInt(buffer: [UInt8]) throws -> (UInt64, [UInt8]) {
-    let (size, bytesRead) = VarInt.uVarInt(buffer)
-    if bytesRead == 0 { throw MultihashError.VarIntBufferTooShort }
-    if bytesRead < 0 { throw MultihashError.VarIntTooLarge }
-
-    // Return the size as read from the uvarint and the buffer without the uvarint
-    return (size, Array(buffer[bytesRead..<buffer.count]))
+    do {
+        let (size, bytesRead) = try VarInt.decode(buffer)
+        // Return the size as read from the uvarint and the buffer without the uvarint
+        return (size, Array(buffer[bytesRead..<buffer.count]))
+    } catch VarIntError.needsMoreBytes {
+        throw MultihashError.VarIntBufferTooShort
+    } catch VarIntError.overflow {
+        throw MultihashError.VarIntTooLarge
+    } catch {
+        throw error
+    }
 }
 
 private func fromHexString(_ theString: String) throws -> Multihash {
@@ -403,7 +371,7 @@ public func decodeMultihashBuffer(_ buf: [UInt8]) throws -> DecodedMultihash {
 
     // Tolerate well-formed multihashes whose code isn't in our codec table by decoding
     // with a `nil` name rather than failing the whole decode.
-    let name = (try? Codecs(code))?.name
+    let name = (try? Codecs(code: code))?.name
     let dm = DecodedMultihash(code: Int(code), name: name, length: Int(digestLength), digest: digest)
 
     /// This is usually triggered when we try and instantiate a CID or PeerID as a Multihash...
@@ -438,8 +406,8 @@ public func encodeMultihashBuffer(_ buf: [UInt8], code: Int?) throws -> [UInt8] 
 
     // Multihash format: <varint hash function code><varint digest size in bytes><digest bytes>
     // Both prefixes MUST be unsigned varints so codes/lengths >= 128 (e.g. md5 == 0xd5) round-trip.
-    var pre = putUVarInt(UInt64(code))
-    pre.append(contentsOf: putUVarInt(UInt64(buf.count)))
+    var pre = UInt64(code).varIntBytes.bytes
+    pre.append(contentsOf: UInt64(buf.count).varIntBytes.bytes)
     pre.append(contentsOf: buf)
 
     return pre
@@ -460,7 +428,7 @@ public func encodeMultihashBuffer(_ buf: [UInt8], asHashType: Codecs) throws -> 
 /// let multihashBuffer = try encodeMultihashBuffer(hash, asHashType: "sha1") // 111488c2f11fb2ce392acb5b2986e640211c4690073e
 /// ```
 public func encodeMultihashBuffer(_ buf: [UInt8], asHashType: String) throws -> [UInt8] {
-    try encodeMultihashBuffer(buf, asHashType: try Codecs(asHashType))
+    try encodeMultihashBuffer(buf, asHashType: try Codecs(name: asHashType))
 }
 
 /// ValidCode checks whether a multihash code is valid.
@@ -471,10 +439,11 @@ private func validCode(_ code: Int?) -> Bool {
             return true
         }
 
-        if Codecs.supportedHashAlgorithms.contains(where: { $0 == c }) {
+        if Codecs.supportedHashAlgorithms.contains(where: { $0.code == c }) {
             return true
         }
     }
+    print("Code: \(code) is not a validCode")
     return false
 }
 
