@@ -31,20 +31,29 @@ struct MultihashTests {
     ///     raw string with encoding and hash
     ///     raw hex string
     ///     raw b58 string
-    ///
+
+    @Test func taggedHashListMatchesCurratedList() {
+        let tagged = Codecs.codecs(tagged: .multihash)
+        let currated: [Codecs] = [
+            .md5, .sha1, .sha2_256, .sha2_512, .sha3_224, .sha3_256, .sha3_384, .sha3_512, .keccak_224, .keccak_256,
+            .keccak_384, .keccak_512,
+        ]
+
+        #expect(Set(tagged).isSuperset(of: Set(currated)))
+    }
 
     @Test func testHashFunctions() throws {
         for test in MultihashTests.TestFixtures {
             let mh = try Multihash(
                 raw: test.input,
-                hashedWith: try Codecs(test.algorithm),
+                hashedWith: try Codecs(name: test.algorithm),
                 customByteLength: Int(test.bits)! / 8
             )
             //print(mh.hexString)
             #expect(mh.asString(base: .base16) == test.multihash)
             #expect(mh.name == test.algorithm)
             #expect(mh.length == Int(test.bits)! / 8)
-            #expect(try mh.code == Int(Codecs(test.algorithm).code))
+            #expect(try mh.code == Int(Codecs(name: test.algorithm).code))
         }
     }
 
