@@ -199,27 +199,49 @@ extension Multihash {
     /// ```
     ///
     /// - Parameters:
-    ///   - digest: The precomputed digest. Its length is taken as given; nothing checks it against
-    ///     `function`'s ``HashFunction/digestLength``, so truncated digests are wrapped as-is.
+    ///   - digest: The precomputed digest.
     ///   - function: The hash function that produced `digest`.
-    public init(digest: some Collection<UInt8>, function: HashFunction) {
-        // A HashFunction always has a known code, and a digest that fits in memory always has an
-        // encodable length, so there is nothing here that can fail.
+    /// - Throws: ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    ///   longer than `function` can produce.
+    ///
+    /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
+    ///   using ``matches(_:)`` or ``matching(_:)`` against the original bytes
+    public init(digest: some Collection<UInt8>, function: HashFunction) throws(MultihashError) {
+        try Multihash.checkDigestLength(digest.count, against: function)
         self = Multihash.encoding(digest: digest, code: function.codec.code)!
     }
 
     /// Wraps an already computed digest, without re-hashing it.
     ///
     /// - Parameters:
-    ///   - digest: The precomputed digest.
+    ///   - digest: The precomputed digest. Truncated digests are legal and are wrapped as-is.
     ///   - codec: The codec of the hash function that produced `digest`.
-    /// - Throws: ``MultihashError/lengthNotSupported`` if `digest` is too long to write a length
-    ///   prefix for.
+    /// - Throws: ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    ///   longer than `codec`'s hash function can produce, or
+    ///   ``MultihashError/lengthNotSupported`` if it is too long to write a length prefix for.
+    ///
+    /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
+    ///   using ``matches(_:)`` or ``matching(_:)`` against the original bytes
     public init(digest: some Collection<UInt8>, codec: Codecs) throws(MultihashError) {
+        if let function = HashFunction(codec: codec) {
+            try Multihash.checkDigestLength(digest.count, against: function)
+        }
         guard let multihash = Multihash.encoding(digest: digest, code: codec.code) else {
             throw MultihashError.lengthNotSupported
         }
         self = multihash
+    }
+
+    /// Rejects a digest longer than `function` can produce.
+    ///
+    /// Shorter is legal, the spec permits truncation. ``HashFunction/identity`` has no fixed
+    /// length, so nothing is checked for it.
+    private static func checkDigestLength(
+        _ length: Int,
+        against function: HashFunction
+    ) throws(MultihashError) {
+        guard let expected = function.digestLength, length > expected else { return }
+        throw .digestTooLongForHashFunction(function, expected: expected, actual: length)
     }
 
     /// Builds the Multihash buffer for `digest` under `code`, or `nil` if the digest is too long
@@ -266,11 +288,10 @@ extension Multihash {
         truncatedTo length: Int? = nil
     ) {
         let digest = function.hash(bytes)
-        if let length {
-            self.init(digest: digest.prefix(length), function: function)
-        } else {
-            self.init(digest: digest, function: function)
-        }
+        let truncated = length.map { digest.prefix($0) } ?? digest[...]
+        // this only ever returns nil if the digest exceeds the hash function's digest
+        // length which can't happen here so force unwrapping the optional is okay
+        self = Multihash.encoding(digest: truncated, code: function.codec.code)!
     }
 
     /// Hashes `bytes` and wraps the digest.

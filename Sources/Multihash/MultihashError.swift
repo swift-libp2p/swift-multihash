@@ -54,6 +54,15 @@ public enum MultihashError: Error, Hashable, Sendable {
     /// (blake2b, blake2s and blake3). See `HashFunction` for the ones that are supported.
     case unsupportedHashFunction(Codecs)
 
+    /// The digest is longer than the named hash function can produce.
+    ///
+    /// A *shorter* digest is accepted, the multihash spec permits truncated digests, but one
+    /// longer than the function's output can't have come from it.
+    ///
+    /// - Note: A digest of the right length still proves nothing about the content,
+    ///   only verifying the Multihash against the original bytes does that.
+    case digestTooLongForHashFunction(HashFunction, expected: Int, actual: Int)
+
     /// The string couldn't be represented in the requested encoding.
     case invalidStringEncoding(String.Encoding)
 }
@@ -75,6 +84,8 @@ extension MultihashError: CustomStringConvertible {
             "the buffer holds a complete Multihash followed by bytes that aren't part of it"
         case .unsupportedHashFunction(let codec):
             "\(codec) isn't a hash function this package can compute"
+        case .digestTooLongForHashFunction(let function, let expected, let actual):
+            "a \(actual) byte digest can't have come from \(function), which produces \(expected) bytes"
         case .invalidStringEncoding(let encoding):
             "the string couldn't be represented in String.Encoding(rawValue: \(encoding.rawValue))"
         }

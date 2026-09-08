@@ -231,7 +231,7 @@ struct MultihashRegressionTests {
 
     @Test func digestInitializerMatchesRawHashing() throws {
         let digest = Array("multihash".data(using: .utf8)!.sha1())
-        let fromDigest = Multihash(digest: digest, function: .sha1)
+        let fromDigest = try Multihash(digest: digest, function: .sha1)
         let fromCodec = try Multihash(digest: digest, codec: .sha1)
         let fromRaw = try Multihash(hashing: "multihash", with: .sha1)
 
@@ -249,6 +249,59 @@ struct MultihashRegressionTests {
 
         let full = try Multihash(hashing: "multihash", with: .sha2_256)
         #expect(Array(mh.digest) == Array(full.digest.prefix(10)))
+    }
+
+    // MARK: - Digest length check
+
+    @Test func digestLongerThanTheHashFunctionIsRejected() throws {
+        let sha256Digest = Array("multihash".data(using: .utf8)!.sha256())  // 32 bytes
+        #expect(sha256Digest.count == 32)
+
+        #expect(throws: MultihashError.digestTooLongForHashFunction(.md5, expected: 16, actual: 32)) {
+            try Multihash(digest: sha256Digest, function: .md5)
+        }
+        #expect(throws: MultihashError.digestTooLongForHashFunction(.md5, expected: 16, actual: 32)) {
+            try Multihash(digest: sha256Digest, codec: .md5)
+        }
+
+        // Ensure the correct error message is thrown
+        let error = MultihashError.digestTooLongForHashFunction(.md5, expected: 16, actual: 32)
+        #expect("\(error)" == "a 32 byte digest can't have come from md5, which produces 16 bytes")
+    }
+
+    /// Truncation is legal, so a *shorter* digest must still be accepted.
+    /// The conformance fixtures in `TestValues.swift` depend on this (sha1 at 80 bits, …).
+    @Test(arguments: HashFunction.allCases.filter { $0 != .identity })
+    func shorterDigestsAreAccepted(function: HashFunction) throws {
+        let expected = try #require(function.digestLength)
+        let digest = Array(function.hash(Array("multihash".utf8)).prefix(expected / 2))
+
+        let mh = try Multihash(digest: digest, function: function)
+        #expect(mh.digestLength == expected / 2)
+        #expect(try Multihash(digest: digest, codec: function.codec) == mh)
+
+        // Exactly the full length is fine too, it's the boundary
+        let full = function.hash(Array("multihash".utf8))
+        #expect(try Multihash(digest: full, function: function).digestLength == expected)
+    }
+
+    /// `identity` has no fixed output length, so nothing is checked for it.
+    @Test func identityAcceptsAnyDigestLength() throws {
+        for length in [0, 1, 64, 1024] {
+            let mh = try Multihash(digest: [UInt8](repeating: 0xAB, count: length), function: .identity)
+            #expect(mh.digestLength == length)
+        }
+    }
+
+    /// Codecs this package can't compute have no expected length, so the check is deliberately skipped.
+    @Test func codecsWithoutAHashFunctionSkipTheCheck() throws {
+        #expect(HashFunction(codec: .blake3) == nil)
+
+        let mh = try Multihash(digest: [UInt8](repeating: 0xCD, count: 64), codec: .blake3)
+        #expect(mh.digestLength == 64)
+        #expect(mh.algorithm == .blake3)
+        #expect(mh.hashFunction == nil)
+        #expect(try Multihash(mh.value) == mh)
     }
 
     // MARK: - matches / matching
@@ -357,7 +410,7 @@ struct MultihashDeprecatedTests {
         let digest = Array("multihash".data(using: .utf8)!.sha1())
 
         let encoded = try encodeMultihashBuffer(digest, asHashType: Codecs.sha1)
-        #expect(encoded == Multihash(digest: digest, function: .sha1).value)
+        #expect(try encoded == Multihash(digest: digest, function: .sha1).value)
         #expect(try encodeMultihashBuffer(digest, asHashType: "sha1") == encoded)
         #expect(try encodeMultihashBuffer(digest, code: Int(Codecs.sha1.code)) == encoded)
 
