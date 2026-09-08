@@ -75,9 +75,10 @@ let multihash = Multihash(hashing: payload, with: .sha2_256)
 multihash.asString(base: .base16)         // -> "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
 multihash.asString(base: .base58btc)      // -> "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
 
-/// Or wrap a digest you already have, without re-hashing it
+/// Or wrap a digest you already have, without re-hashing it.
+/// Throws if the digest is longer than the hash function can produce.
 let digest = Array("multihash".utf8).sha1()
-let mh = Multihash(digest: digest, function: .sha1)
+let mh = try Multihash(digest: digest, function: .sha1)
 
 /// The parts are parsed once, at init, and are non-optional
 mh.code                                   // -> 0x11        (UInt64)
@@ -119,24 +120,26 @@ Multihash(hashing: some Collection<UInt8>, codec: Codecs, truncatedTo: Int? = ni
 Multihash(hashing: String, with: HashFunction, using: String.Encoding = .utf8, truncatedTo: Int? = nil) throws
 Multihash(hashing: String, codec: Codecs, using: String.Encoding = .utf8, truncatedTo: Int? = nil) throws
 
-/// Wrapping a precomputed digest
-Multihash(digest: some Collection<UInt8>, function: HashFunction)
-Multihash(digest: some Collection<UInt8>, code: Codecs) throws
+/// Wrapping a precomputed digest.
+/// Both throw if the digest is longer than the hash function can produce, shorter digests are allowed. 
+/// A digest of the right length still proves nothing about the content, only `matching(_:)` against the original bytes does that.
+Multihash(digest: some Collection<UInt8>, function: HashFunction) throws
+Multihash(digest: some Collection<UInt8>, codec: Codecs) throws
 
 /// Decoding
 Multihash(_: some Collection<UInt8>) throws                        // the whole buffer is one multihash
 Multihash.decode(prefixed:) -> (multihash: Multihash, remaining: SubSequence) throws
 Collection<UInt8>.multihash() -> (multihash: Multihash, bytes: SubSequence) throws
 Multihash(multibase: String) throws                                // prefix required
-Multihash(digestMultibase: String, code: Codecs) throws            // a bare digest, not a multihash
+Multihash(multibaseDigest: String, code: Codecs) throws            // a bare digest, not a multihash
 
 /// Properties, parsed once at init, non-optional
 Multihash.value: [UInt8]          // the whole buffer, prefixes included
 Multihash.code: UInt64
-Multihash.length: Int
+Multihash.digestLength: Int
 Multihash.digest: ArraySlice<UInt8>   // a slice of `value`, no copy
-Multihash.algorithm: Codecs?          // nil for codes outside the multicodec table
-Multihash.name: String?               // nil for codes outside the multicodec table
+Multihash.algorithm: Codecs?          // nil for codes outside the Multicodec table
+Multihash.hashName: String?           // nil for codes outside the Multicodec table
 Multihash.hashFunction: HashFunction? // nil if this package can't compute it
 
 /// Strings
