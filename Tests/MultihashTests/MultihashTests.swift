@@ -80,7 +80,7 @@ struct MultihashTests {
             #expect(digest == input)
         }
 
-        // And the digest is what ends up in the multihash
+        // And the digest is what ends up in the Multihash
         let mh = Multihash(hashing: input, with: function)
         #expect(Array(mh.digest) == digest)
         #expect(mh.digestLength == digest.count)
@@ -173,7 +173,7 @@ struct MultihashTests {
         #expect(mh4.code == Codecs.sha1.code)
         #expect(Data(mh4.digest) == sha)
 
-        // All four spell the same multihash
+        // All four spell the same Multihash
         #expect(Set([mh, mh2, mh3, mh4]).count == 1)
     }
 

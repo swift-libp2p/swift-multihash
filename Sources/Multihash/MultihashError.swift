@@ -38,13 +38,13 @@ public enum MultihashError: Error, Hashable, Sendable {
     /// The associated value is the claimed length.
     ///
     /// - Note: Usually means the buffer holds something larger that merely *starts* with a
-    ///   multihash, such as a CID or a multiaddr component. Use `Multihash.decode(prefixed:)` for
+    ///   Multihash, such as a CID or a multiaddr component. Use `Multihash.decode(prefixed:)` for
     ///   those.
     case inconsistentLength(Int)
 
-    /// The buffer held a complete multihash followed by bytes that aren't part of it.
+    /// The buffer held a complete Multihash followed by bytes that aren't part of it.
     ///
-    /// - Note: Use `Multihash.decode(prefixed:)` to decode a multihash out of a larger buffer and
+    /// - Note: Use `Multihash.decode(prefixed:)` to decode a Multihash out of a larger buffer and
     ///   get the remainder back.
     case trailingBytes
 
@@ -72,7 +72,7 @@ extension MultihashError: CustomStringConvertible {
         case .inconsistentLength(let length):
             "the digest is shorter than its length prefix claims (\(length) bytes)"
         case .trailingBytes:
-            "the buffer holds a complete multihash followed by bytes that aren't part of it"
+            "the buffer holds a complete Multihash followed by bytes that aren't part of it"
         case .unsupportedHashFunction(let codec):
             "\(codec) isn't a hash function this package can compute"
         case .invalidStringEncoding(let encoding):

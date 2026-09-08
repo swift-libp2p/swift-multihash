@@ -21,11 +21,11 @@ import VarInt
 
 @testable import Multihash
 
-/// Regression tests covering bugs found during the multihash spec review:
+/// Regression tests covering bugs found during the Multihash spec review:
 ///  - the encoder wrote single raw bytes instead of varints (corrupted any code/length >= 128, e.g. md5)
 ///  - md5's default hash length was 20 instead of 16
 ///  - decode threw on unknown-but-well-formed codes instead of tolerating them
-///  - the 2-byte empty `identity` multihash was rejected as "too short"
+///  - the 2-byte empty `identity` Multihash was rejected as "too short"
 /// Plus tests for the Hashable / Codable conformances and the digest / matches helpers.
 @Suite("Multihash Regression Tests")
 struct MultihashRegressionTests {
@@ -134,7 +134,7 @@ struct MultihashRegressionTests {
         #expect(HashFunction(codec: .dag_pb) == nil)
     }
 
-    // MARK: - Bug: empty identity multihash
+    // MARK: - Bug: empty identity Multihash
 
     @Test func emptyIdentityDecodes() throws {
         let decoded = try Multihash([0x00, 0x00])
@@ -163,7 +163,7 @@ struct MultihashRegressionTests {
 
     // MARK: - decode(prefixed:)
 
-    /// The CIDv1 layout: `<version><content codec><multihash>`. The multihash's own length prefix
+    /// The CIDv1 layout: `<version><content codec><multihash>`. The Multihash's own length prefix
     /// is what says where it ends, which is what `decode(prefixed:)` exists to use.
     @Test func decodePrefixedReadsMultihashOutOfACIDv1() throws {
         let mh = try Multihash(hashing: "multihash", with: .sha2_256)
@@ -180,7 +180,7 @@ struct MultihashRegressionTests {
         #expect(remaining.isEmpty)
     }
 
-    /// A multihash followed by more payload: the remainder must come back untouched.
+    /// A Multihash followed by more payload: the remainder must come back untouched.
     @Test func decodePrefixedReturnsTheRemainder() throws {
         let mh = try Multihash(hashing: "multihash", with: .sha1)
         let trailer: [UInt8] = [0xDE, 0xAD, 0xBE, 0xEF]
@@ -262,7 +262,7 @@ struct MultihashRegressionTests {
         #expect(try !mh.matching(Array("not multihash".utf8)))
     }
 
-    /// A truncated multihash verifies against an equally truncated digest.
+    /// A truncated Multihash verifies against an equally truncated digest.
     @Test func matchesHonoursTruncation() throws {
         let mh = try Multihash(hashing: "multihash", with: .sha2_256, truncatedTo: 10)
         #expect(mh.matches(Array("multihash".utf8)))
@@ -334,7 +334,7 @@ struct MultihashRegressionTests {
     }
 
     /// `init(multibase:)` requires the prefix rather than guessing at it, which is what made the
-    /// old `init(b58String:)` misread any base58btc multihash starting with `z`.
+    /// old `init(b58String:)` misread any base58btc Multihash starting with `z`.
     @Test func multibaseInitializerRequiresThePrefix() throws {
         let mh = try Multihash(hashing: "multihash", with: .sha1)
         let bare = mh.asString(base: .base58btc)  // "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj", no prefix

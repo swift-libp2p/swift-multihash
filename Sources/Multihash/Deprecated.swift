@@ -57,7 +57,7 @@ public func encodeMultihashBuffer(_ buf: [UInt8], asHashType: String) throws -> 
     try Multihash(digest: buf, codec: try Codecs(name: asHashType)).value
 }
 
-/// The parts of a decoded multihash.
+/// The parts of a decoded Multihash.
 ///
 /// - Note: `Multihash` now carries these itself, non-optionally and without re-parsing on every
 ///   access. Use `mh.code`, `mh.name`, `mh.digestLength` and `mh.digest` instead.
@@ -96,7 +96,7 @@ extension Multihash {
     }
 
     /// - Note: The replacement doesn't guess at prefixes. This shim prepends `z` unless the string
-    ///   already starts with one, which misreads any base58btc multihash that legitimately begins
+    ///   already starts with one, which misreads any base58btc Multihash that legitimately begins
     ///   with `z`.
     @available(*, deprecated, message: "Use `try Multihash(Array<UInt8>(decoding: str, as: .base58btc))`.")
     public init(b58String str: String) throws {
@@ -106,7 +106,7 @@ extension Multihash {
         try self.init(try BaseEncoding.decode(prefixed).data)
     }
 
-    /// - Note: Renamed because the string holds a bare *digest*, not a multihash.
+    /// - Note: Renamed because the string holds a bare *digest*, not a Multihash.
     @available(*, deprecated, renamed: "init(digestMultibase:code:)")
     public init(multibase: String, codec: Codecs) throws {
         try self.init(multibaseDigest: multibase, code: codec)

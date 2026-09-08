@@ -15,7 +15,7 @@
 extension MultihashTests {
 
     public typealias Fixture = (algorithm: String, bits: String, input: String, multihash: String)
-    
+
     /// An array of test tuples with the following key (algorithm, bits, input ,multihash)
     ///  - Note: in order to compute `multihash` from `input`
     ///    - let d = input.data(using: .utf8)
