@@ -275,7 +275,7 @@ struct MultihashRegressionTests {
     func shorterDigestsAreAccepted(function: HashFunction) throws {
         // Skip `identity`
         guard function != .identity else { return }
-        
+
         let expected = try #require(function.digestLength)
         let digest = Array(function.hash(Array("multihash".utf8)).prefix(expected / 2))
 
