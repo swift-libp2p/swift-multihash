@@ -14,6 +14,8 @@
 
 extension MultihashTests {
 
+    public typealias Fixture = (algorithm: String, bits: String, input: String, multihash: String)
+    
     /// An array of test tuples with the following key (algorithm, bits, input ,multihash)
     ///  - Note: in order to compute `multihash` from `input`
     ///    - let d = input.data(using: .utf8)
@@ -22,7 +24,7 @@ extension MultihashTests {
     ///    - mh.asString(base: .base16) == `multihash`
     ///  - WARNING:
     ///    Do not attempt to decode `input` as a hex string. The value should be converted to data directly using .utf8 encoding...
-    public static let TestFixtures: [(algorithm: String, bits: String, input: String, multihash: String)] = [
+    public static let TestFixtures: [Fixture] = [
         (
             algorithm: "sha1", bits: "80", input: "431fb5d4c9b735ba1a34d0df045118806ae2336f2c",
             multihash: "110ae861e452cfd84dca9a17"
