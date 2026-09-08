@@ -271,8 +271,11 @@ struct MultihashRegressionTests {
 
     /// Truncation is legal, so a *shorter* digest must still be accepted.
     /// The conformance fixtures in `TestValues.swift` depend on this (sha1 at 80 bits, …).
-    @Test(arguments: HashFunction.allCases.filter { $0 != .identity })
+    @Test(arguments: HashFunction.allCases)
     func shorterDigestsAreAccepted(function: HashFunction) throws {
+        // Skip `identity`
+        guard function != .identity else { return }
+        
         let expected = try #require(function.digestLength)
         let digest = Array(function.hash(Array("multihash".utf8)).prefix(expected / 2))
 
