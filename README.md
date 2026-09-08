@@ -35,7 +35,7 @@ let package = Package(
     ...
     dependencies: [
         ...
-        .package(url: "https://github.com/swift-libp2p/swift-multihash.git", .upToNextMinor(from: "0.2.0"))
+        .package(url: "https://github.com/swift-libp2p/swift-multihash.git", .upToNextMinor(from: "0.3.0"))
     ],
     ...
         .target(
@@ -56,81 +56,115 @@ let package = Package(
 
 import Multihash
 
-/// Multihash Format 
-/// <varint hash function code><varint digest size in bytes><hash function output>
+/// Multihash Format
+/// <uvarint hash function code><uvarint digest size in bytes><hash function output>
 
-Multihash.supportedHashAlgorithms
-/// [.md5, .sha1, .sha2_256, .sha2_512, .sha3_224, .sha3_256, .sha3_384, .sha3_512, .keccak_224, .keccak_256, .keccak_384, .keccak_512]
+HashFunction.allCases
+/// [.identity, .md5, .sha1, .sha2_256, .sha2_512, .sha3_224, .sha3_256, .sha3_384, .sha3_512,
+///  .keccak_224, .keccak_256, .keccak_384, .keccak_512]
 
-/// Encoding a Multihash
-let multihash = try Multihash(raw: "multihash", hashedWith: .sha1)
+/// Hashing
+let multihash = try Multihash(hashing: "multihash", with: .sha1)
 multihash.asString(base: .base16)         // -> "111488c2f11fb2ce392acb5b2986e640211c4690073e"
 multihash.asString(base: .base32PadUpper) // -> "CEKIRQXRD6ZM4OJKZNNSTBXGIAQRYRUQA47A===="
 multihash.asString(base: .base58btc)      // -> "5dsgvJGnvAfiR3K6HCBc4hcokSfmjj"
 multihash.asString(base: .base64Pad)      // -> "ERSIwvEfss45KstbKYbmQCEcRpAHPg=="
 
-let multihash = try Multihash(raw: "multihash", hashedWith: .sha2_256)
+/// Hashing bytes never throws
+let multihash = Multihash(hashing: payload, with: .sha2_256)
 multihash.asString(base: .base16)         // -> "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
-multihash.asString(base: .base32PadUpper) // -> "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
 multihash.asString(base: .base58btc)      // -> "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
-multihash.asString(base: .base64Pad)      // -> "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw=="
+
+/// Or wrap a digest you already have, without re-hashing it
+let digest = Array("multihash".utf8).sha1()
+let mh = Multihash(digest: digest, function: .sha1)
+
+/// The parts are parsed once, at init, and are non-optional
+mh.code                                   // -> 0x11        (UInt64)
+mh.digestLength                           // -> 20          (Int)
+mh.digest                                 // -> ArraySlice, zero-copy
+mh.algorithm                              // -> Codecs.sha1
+mh.hashName                               // -> "sha1"      (nil for codes outside the table)
+mh.hashFunction                           // -> HashFunction.sha1
 
 /// Decoding a Multihash
 
-/// Given a Multibase compliant Multihash String
-/// 
-/// Example
+/// From a multibase compliant string. The base prefix is required, not guessed at.
+///
 /// "f111488c2f11fb2ce392acb5b2986e640211c4690073e"
 ///     f       11      14     88c2f11fb2ce392acb5b2986e640211c4690073e
-/// <base16> <sha1> <20 bits> <sha1 digest>
+/// <base16> <sha1> <20 bytes> <sha1 digest>
+let mh = try Multihash(multibase: "f111488c2f11fb2ce392acb5b2986e640211c4690073e")
 
-let mh = try Multihash(multihash: "f111488c2f11fb2ce392acb5b2986e640211c4690073e")
-print(mh.name) // -> "sha1"
-print(mh.code) // ->  0x11
-print(mh.digest.hexString) // -> "88c2f11fb2ce392acb5b2986e640211c4690073e"
+/// From a buffer that is exactly one multihash
+let mh = try Multihash(buffer)            // any Collection<UInt8>: Array, ArraySlice, Data, …
 
-/// Or use the try decodeMultihashBuffer() method
+/// From the front of a larger buffer — a CID, a multiaddr component, a framed message.
+/// The digest length prefix says where the multihash ends, so the remainder comes back too.
+let (mh, remaining) = try Multihash.decode(prefixed: buffer)
+let (mh, remaining) = try buffer.multihash()   // same thing, as a Collection method
 
-let multihashBuffer = Data(...)           // -> 111488c2f11fb2ce392acb5b2986e640211c4690073e
-let decoded = try decodeMultihashBuffer(multihashBuffer)
-decoded.name                              // -> "sha1"
-decoded.code                              // -> 0x11
-decoded.digest                            // -> 88c2f11fb2ce392acb5b2986e640211c4690073e (as hex)
-decoded.length                            // -> 20
+/// Verifying that a payload matches a hash
+mh.matches(payload)                       // -> Bool, false if unverifiable
+try mh.matching(payload)                  // throws .unsupportedHashFunction instead
 
 ```
 
 ### API
 ```Swift
 
-/// Initializers
-Multihash(multihash:String) throws 
-Multihash(:[UInt8]) throws
-Multihash(hexString str:String) throws
-Multihash(b58String str:String) throws
-Multihash(multibase:String, codec:Codecs) throws
-Multihash(digest:[UInt8], code:Codecs) throws  // wrap a precomputed digest without re-hashing
-Multihash(raw:String, hashedWith:Codecs, customByteLength:Int?) throws
+/// Hashing, non-throwing when using a HashFunction, throwing when using a Codec
+Multihash(hashing: some Collection<UInt8>, with: HashFunction, truncatedTo: Int? = nil)
+Multihash(hashing: some Collection<UInt8>, codec: Codecs, truncatedTo: Int? = nil) throws
+Multihash(hashing: String, with: HashFunction, using: String.Encoding = .utf8, truncatedTo: Int? = nil) throws
+Multihash(hashing: String, codec: Codecs, using: String.Encoding = .utf8, truncatedTo: Int? = nil) throws
 
+/// Wrapping a precomputed digest
+Multihash(digest: some Collection<UInt8>, function: HashFunction)
+Multihash(digest: some Collection<UInt8>, code: Codecs) throws
 
-/// Properties
-Multihash.code:Int?
-Multihash.algorithm:Codecs?
-Multihash.name:String?
-Multihash.length:Int?
-Multihash.digest:[UInt8]?
+/// Decoding
+Multihash(_: some Collection<UInt8>) throws                        // the whole buffer is one multihash
+Multihash.decode(prefixed:) -> (multihash: Multihash, remaining: SubSequence) throws
+Collection<UInt8>.multihash() -> (multihash: Multihash, bytes: SubSequence) throws
+Multihash(multibase: String) throws                                // prefix required
+Multihash(digestMultibase: String, code: Codecs) throws            // a bare digest, not a multihash
 
-Multihash.asMultibase(_ base: BaseEncoding) -> String
-Multihash.asString(base: BaseEncoding) -> String
+/// Properties, parsed once at init, non-optional
+Multihash.value: [UInt8]          // the whole buffer, prefixes included
+Multihash.code: UInt64
+Multihash.length: Int
+Multihash.digest: ArraySlice<UInt8>   // a slice of `value`, no copy
+Multihash.algorithm: Codecs?          // nil for codes outside the multicodec table
+Multihash.name: String?               // nil for codes outside the multicodec table
+Multihash.hashFunction: HashFunction? // nil if this package can't compute it
 
-Multihash.hexString:String
-Multihash.b58String:String
+/// Strings
+Multihash.asString(base: BaseEncoding, withMultibasePrefix: Bool = false) -> String
+Multihash.description       // the base58btc form, e.g. "QmYtUc4iTC…"
+Multihash.debugDescription  // "Multihash: sha1 0x11 20 88c2f11f…"
 
 /// Verification
-Multihash.matches(raw:[UInt8]) -> Bool  // re-hash `raw` and compare against this multihash
-Multihash.matches(raw:Data) -> Bool
+Multihash.matches(_: some Collection<UInt8>) -> Bool
+Multihash.matching(_: some Collection<UInt8>) throws -> Bool  // distinguishes unverifiable from mismatched
 
-/// Multihash is a value type conforming to Sendable, Hashable & Codable
+/// HashFunction
+HashFunction.allCases: [HashFunction]
+HashFunction(codec: Codecs)   // -> HashFunction?
+HashFunction.codec: Codecs
+HashFunction.name: String
+HashFunction.digestLength: Int?    // nil for .identity, whose output is as long as its input
+HashFunction.hash(_: some Collection<UInt8>) -> [UInt8]
+
+/// Multihash is a value type conforming to Sendable, Hashable, Codable,
+/// RandomAccessCollection<UInt8> and ContiguousBytes, so it can be passed
+/// anywhere bytes are expected:
+/// - Data(mh)
+/// - buffer.writeBytes(mh)
+/// - try Multihash(otherMH)
+///
+/// NOTE: because of that, `count` and `first` refer to the entire buffer,
+/// prefixes included. Use `digest` (or `digestLength`) for the digest alone.
 ```
 
 ## Contributing
