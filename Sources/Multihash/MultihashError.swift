@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import Foundation
+import Multibase
 import Multicodec
 
 /// The errors thrown by this module.
@@ -65,6 +66,9 @@ public enum MultihashError: Error, Hashable, Sendable {
 
     /// The string couldn't be represented in the requested encoding.
     case invalidStringEncoding(String.Encoding)
+
+    /// The string isn't a valid multibase, so there were no bytes to read a Multihash out of.
+    case invalidMultibase(MultibaseError)
 }
 
 extension MultihashError: CustomStringConvertible {
@@ -88,6 +92,8 @@ extension MultihashError: CustomStringConvertible {
             "a \(actual) byte digest can't have come from \(function), which produces \(expected) bytes"
         case .invalidStringEncoding(let encoding):
             "the string couldn't be represented in String.Encoding(rawValue: \(encoding.rawValue))"
+        case .invalidMultibase(let error):
+            "the string isn't valid multibase: \(error)"
         }
     }
 }
