@@ -400,6 +400,57 @@ struct MultihashRegressionTests {
         // Decoding it explicitly is the replacement
         #expect(try Multihash(BaseEncoding.decode(bare, as: .base58btc)) == mh)
     }
+
+    // MARK: - Typed throws
+
+    /// A Multibase error arrives as a `MultihashError`, with the underlying cause preserved so
+    /// it can still be matched on.
+    @Test func multibaseErrorsAreWrapped() throws {
+        // An unrecognized prefix character
+        #expect(throws: MultihashError.invalidMultibase(.unknownBase)) {
+            try Multihash(multibase: "!!! not multibase")
+        }
+        #expect(throws: MultihashError.invalidMultibase(.unknownBase)) {
+            try Multihash(multibaseDigest: "!!! not multibase", code: .sha1)
+        }
+
+        // A recognized prefix whose body the base rejects
+        #expect(throws: MultihashError.self) {
+            try Multihash(multibase: "f не-шестнадцатеричный")
+        }
+
+        // The wrapped cause survives, so nested matching works
+        do {
+            _ = try Multihash(multibase: "&nope")
+            Issue.record("expected a throw")
+        } catch MultihashError.invalidMultibase(.unknownBase) {
+            // exactly the case we want
+        }
+
+        // …and the message names the real problem
+        let error = MultihashError.invalidMultibase(.unknownBase)
+        #expect("\(error)".hasPrefix("the string isn't valid multibase: "))
+    }
+
+    @Test func everythingThrowsASingleTypedError() throws {
+        func classify(_ string: String) -> String {
+            do {
+                _ = try Multihash(multibaseDigest: string, code: .sha1)
+                return "ok"
+            } catch {
+                // `error` is a MultihashError here.
+                switch error {
+                case .invalidMultibase(let underlying): return "multibase: \(underlying)"
+                case .digestTooLongForHashFunction(_, let expected, let actual): return "\(actual)>\(expected)"
+                default: return "other"
+                }
+            }
+        }
+
+        #expect(classify("f88c2f11fb2ce392acb5b2986e640211c4690073e") == "ok")
+        #expect(classify("!!!nope").hasPrefix("multibase: "))
+        #expect(classify("f" + String(repeating: "ab", count: 40)) == "40>20")
+    }
 }
 
 // MARK: - Deprecated API
