@@ -113,8 +113,7 @@ try mh.matching(payload)                  // throws .unsupportedHashFunction ins
 
 ### API
 
-Every throwing member below is `throws(MultihashError)`, so one `catch` covers the whole API and
-the bound error is typed rather than `any Error`. Multibase failures arrive wrapped as
+Every throwing member below is `throws(MultihashError)`. Multibase failures arrive wrapped as
 `.invalidMultibase(MultibaseError)`, with the underlying cause preserved:
 
 ```Swift
