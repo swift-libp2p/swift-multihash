@@ -3,7 +3,7 @@
 //
 // This source file is part of the swift-libp2p open source project
 //
-// Copyright (c) 2022-2025 swift-libp2p project authors
+// Copyright (c) 2022-2026 swift-libp2p project authors
 // Licensed under MIT
 //
 // See LICENSE for license information
@@ -26,10 +26,9 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        // .package(url: /* package url */, from: "1.0.0"),
-        .package(url: "https://github.com/swift-libp2p/swift-varint.git", .upToNextMinor(from: "0.2.0")),
-        .package(url: "https://github.com/swift-libp2p/swift-multibase.git", .upToNextMinor(from: "0.2.0")),
-        .package(url: "https://github.com/swift-libp2p/swift-multicodec.git", .upToNextMinor(from: "0.2.0")),
+        .package(url: "https://github.com/swift-libp2p/swift-varint.git", .upToNextMinor(from: "0.3.0")),
+        .package(url: "https://github.com/swift-libp2p/swift-multibase.git", .upToNextMinor(from: "0.3.0")),
+        .package(url: "https://github.com/swift-libp2p/swift-multicodec.git", .upToNextMinor(from: "0.3.0")),
         .package(url: "https://github.com/krzyzanowskim/CryptoSwift.git", .upToNextMajor(from: "1.9.0")),
     ],
     targets: [

@@ -2,7 +2,7 @@
 //
 // This source file is part of the swift-libp2p open source project
 //
-// Copyright (c) 2022-2025 swift-libp2p project authors
+// Copyright (c) 2022-2026 swift-libp2p project authors
 // Licensed under MIT
 //
 // See LICENSE for license information
@@ -11,474 +11,545 @@
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
-//
-//  Created by Matteo Sartori on 18/05/15.
-//  Modified by Brandon Toms on 5/1/2022
 
-// We use CryptoSwift due to swift-crypto not supporting the keccak variants of sha3)
-import CryptoSwift
 import Foundation
 import Multibase
 import Multicodec
 import VarInt
 
-public enum MultihashError: Error {
-    case unknownCode
-    case hashTooShort
-    case hashTooLong
-    case VarIntBufferTooShort
-    case VarIntTooLarge
-    case lengthNotSupported
-    case hexConversionFail
-    case inconsistentLength(Int)
+/// A self describing hash.
+///
+/// The wire format is three parts back to back:
+/// ```
+/// <uVarInt hash function code><uVarInt digest length in bytes><digest>
+/// ```
+///
+/// ```swift
+/// let mh = Multihash(hashing: "multihash".utf8, with: .sha1)
+/// mh.hashName                             // "sha1"
+/// mh.code                             // 0x11
+/// mh.digestLength                           // 20
+/// mh.asString(base: .base16)          // "111488c2f11fb2ce392acb5b2986e640211c4690073e"
+/// ```
+///
+/// Multihash conforms to `RandomAccessCollection` using its `value`, so it can be used wherever a
+/// collection of bytes is needed.
+///
+/// ```swift
+/// Data(mh)                   // Foundation
+/// buffer.writeBytes(mh)      // NIO ByteBuffer
+/// mh.asString(base: .base58btc)
+/// ```
+///
+/// - Warning: Because of that conformance, `count` and `first` refer to the *entire* buffer,
+///   prefixes included. Use ``digest`` (and `digest.count`, or ``digestLength``) for the digest alone.
+public struct Multihash: Sendable, Hashable, CustomStringConvertible, CustomDebugStringConvertible {
+
+    /// The entire Multihash buffer, prefixes included.
+    public let value: [UInt8]
+
+    /// The code of the hash function used to compute the digest (ex: `0x11` for sha1).
+    public let code: UInt64
+
+    /// The length of the digest in bytes.
+    ///
+    /// - Note: Always equal to `digest.count`.
+    public let digestLength: Int
+
+    /// The digest, without the hash function and length prefixes.
+    ///
+    /// A slice of ``value``, so reading it doesn't copy. Use `Data(mh.digest)` or
+    /// `Array(mh.digest)` when a standalone buffer is needed.
+    public var digest: ArraySlice<UInt8> { self.value[self.digestStart...] }
+
+    /// The codec of the hash function used to compute the digest, or `nil` if ``code`` isn't in
+    /// the multicodec table.
+    ///
+    /// A well formed Multihash carrying an unknown code still decodes, it just can't be named.
+    public var algorithm: Codecs? { Codecs(rawValue: self.code) }
+
+    /// The name of the hash function used to compute the digest (ex: `sha2-256`), or `nil` if
+    /// ``code`` isn't in the multicodec table.
+    public var hashName: String? { self.algorithm?.name }
+
+    /// The hash function used to compute the digest, or `nil` if this package can't compute it.
+    public var hashFunction: HashFunction? {
+        self.algorithm.flatMap(HashFunction.init(codec:))
+    }
+
+    /// Where the digest starts in ``value``, a.k.a the combined width of the two VarInt prefixes.
+    private let digestStart: Int
+
+    private init(value: [UInt8], code: UInt64, length: Int, digestStart: Int) {
+        self.value = value
+        self.code = code
+        self.digestLength = length
+        self.digestStart = digestStart
+    }
 }
 
-// English language error strings.
-extension MultihashError {
-    var description: String {
-        get {
-            switch self {
-            case .unknownCode:
-                return "Unknown multihash code."
-            case .hashTooShort:
-                return "Multihash too short. Must be at least 2 bytes"
-            case .hashTooLong:
-                return "Multihash too long. Digest length exceeds Int32.max"
-            case .VarIntBufferTooShort:
-                return "Unsigned Variable Integer buffer too short."
-            case .VarIntTooLarge:
-                return "Unsigned Variable int is too big. Max is 64 bits."
-            case .lengthNotSupported:
-                return "Multihash digest length is too large to encode"
-            case .hexConversionFail:
-                return "Error occurred in hex conversion."
-            case .inconsistentLength(let len):
-                return "Multihash length inconsistent. \(len)"
-            }
+// MARK: - Decoding
+
+extension Multihash {
+
+    /// Decodes the Multihash at the front of `bytes`, along with whatever follows it.
+    ///
+    /// ```swift
+    /// let (multihash, rest) = try Multihash.decode(prefixed: buffer)
+    /// ```
+    ///
+    /// Mirrors `Codecs.decode(prefixed:)`.
+    ///
+    /// - Parameter bytes: A buffer beginning with a Multihash.
+    /// - Returns: The Multihash, and a slice of everything after it.
+    /// - Throws:
+    ///   - ``bufferTooShort`` or ``varIntBufferTooShort`` if `bytes` ends part way
+    ///   through the Multihash
+    ///   - ``invalidVarInt`` if a prefix isn't a valid minimally encoded 64 bit uVarInt
+    ///   - ``lengthNotSupported`` if the claimed digest length is too large to represent.
+    ///
+    /// - Note: A well formed Multihash whose code isn't in the multicodec table decodes fine; its
+    ///   ``hashName`` is simply `nil`.
+    public static func decode<Bytes: Collection<UInt8>>(
+        prefixed bytes: Bytes
+    ) throws(MultihashError) -> (multihash: Multihash, remaining: Bytes.SubSequence) {
+        // A multihash is at minimum two bytes: a code varint and a length varint. An empty
+        // `identity` digest is the shortest legal one, `0x00 0x00`.
+        let available = bytes.count
+        if available < 2 { throw MultihashError.bufferTooShort }
+
+        var reader = VarIntReader(bytes)
+        let code = try Multihash.readPrefix(&reader)
+        let claimedLength = try Multihash.readPrefix(&reader)
+
+        // We dont support lengths larger than Int32.max
+        guard claimedLength <= UInt64(Int32.max) else { throw MultihashError.lengthNotSupported }
+        let length = Int(claimedLength)
+
+        let digestStart = reader.bytesConsumed
+        let afterDigest = digestStart + length
+        guard afterDigest <= available else { throw MultihashError.inconsistentLength(length) }
+
+        var value = [UInt8]()
+        value.reserveCapacity(afterDigest)
+        value.append(contentsOf: bytes.prefix(afterDigest))
+
+        let multihash = Multihash(value: value, code: code, length: length, digestStart: digestStart)
+        return (multihash, bytes.dropFirst(afterDigest))
+    }
+
+    /// Reads one uVarInt prefix using a VarIntReader.
+    private static func readPrefix<Bytes: Collection<UInt8>>(
+        _ reader: inout VarIntReader<Bytes>
+    ) throws(MultihashError) -> UInt64 {
+        do {
+            return try reader.readUVarInt()
+        } catch VarIntError.needsMoreBytes {
+            // The buffer ended part way through the prefix
+            throw MultihashError.bufferTooShort
+        } catch {
+            // The prefix didn't fit in 64 bits, or wasn't minimally encoded
+            throw MultihashError.invalidVarInt
         }
     }
+
+    /// Initializes a Multihash from a buffer that is exactly one Multihash and nothing else.
+    ///
+    /// ```swift
+    /// let mh = try Multihash(buffer)
+    /// ```
+    ///
+    /// - Parameter bytes: The Multihash buffer, prefixes included.
+    /// - Throws:
+    ///   - ``MultihashError/trailingBytes`` if anything follows the digest
+    ///   - any other ``MultihashError``.
+    ///
+    /// - Note: Use ``decode(prefixed:)`` when the Multihash is embedded in a larger buffer.
+    public init(_ bytes: some Collection<UInt8>) throws(MultihashError) {
+        let (multihash, remaining) = try Multihash.decode(prefixed: bytes)
+        guard remaining.isEmpty else { throw MultihashError.trailingBytes }
+        self = multihash
+    }
 }
 
-public struct Multihash: Sendable, Hashable, Equatable, CustomStringConvertible {
-    public let value: [UInt8]
-    private var decoded: DecodedMultihash? {
-        try? decodeMultihashBuffer(value)
-    }
+extension Collection<UInt8> {
 
-    /// Initialize a Multihash from a raw byte array
-    public init(_ buf: [UInt8]) throws {
-        // Ensure we can decode it before initializing
-        let _ = try decodeMultihashBuffer(buf)
-        self.value = buf
-    }
-
-    /// Wraps an already-computed digest with the given codec, without re-hashing it.
+    /// The Multihash at the front of this buffer, and the bytes that follow it.
+    ///
+    /// ```swift
+    /// let (multihash, rest) = try buffer.multihash()
     /// ```
-    /// //Example
-    /// let digest = "multihash".data(using: .utf8)!.sha1() // 88c2f11fb2ce392acb5b2986e640211c4690073e
-    /// let mh = try Multihash(digest: Array(digest), code: .sha1)
-    /// print(mh.asString(base: .base16)) // => "111488c2f11fb2ce392acb5b2986e640211c4690073e"
+    ///
+    /// - Returns: The Multihash, and a slice of this buffer after it.
+    /// - Throws: see ``Multihash/decode(prefixed:)``
+    public func multihash() throws(MultihashError) -> (multihash: Multihash, bytes: SubSequence) {
+        let (multihash, remaining) = try Multihash.decode(prefixed: self)
+        return (multihash: multihash, bytes: remaining)
+    }
+}
+
+// MARK: - Encoding
+
+extension Multihash {
+
+    /// Wraps an already computed digest, without re-hashing it.
+    ///
+    /// ```swift
+    /// let digest = Array("multihash".utf8).sha1()  // 88c2f11fb2ce392acb5b2986e640211c4690073e
+    /// let mh = Multihash(digest: digest, function: .sha1)
+    /// mh.asString(base: .base16)  // "111488c2f11fb2ce392acb5b2986e640211c4690073e"
     /// ```
-    public init(digest: [UInt8], code: Codecs) throws {
-        try self.init(encodeMultihashBuffer(digest, asHashType: code))
+    ///
+    /// - Parameters:
+    ///   - digest: The precomputed digest.
+    ///   - function: The hash function that produced `digest`.
+    /// - Throws:
+    ///   - ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    ///   longer than `function` can produce.
+    ///
+    /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
+    ///   using ``matches(_:)`` or ``matching(_:)`` against the original bytes
+    public init(digest: some Collection<UInt8>, function: HashFunction) throws(MultihashError) {
+        try Multihash.checkDigestLength(digest.count, against: function)
+        self = Multihash.encoding(digest: digest, code: function.codec.code)!
     }
 
-    /// Initialize a Multihash from a Hex Encoded String
-    public init(hexString str: String) throws {
-        self = try fromHexString(str)
+    /// Wraps an already computed digest, without re-hashing it.
+    ///
+    /// - Parameters:
+    ///   - digest: The precomputed digest. Truncated digests are legal and are wrapped as-is.
+    ///   - codec: The codec of the hash function that produced `digest`.
+    /// - Throws:
+    ///   - ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    ///   longer than `codec`'s hash function can produce
+    ///   - ``MultihashError/lengthNotSupported`` if it is too long to write a length prefix for.
+    ///
+    /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
+    ///   using ``matches(_:)`` or ``matching(_:)`` against the original bytes
+    public init(digest: some Collection<UInt8>, codec: Codecs) throws(MultihashError) {
+        if let function = HashFunction(codec: codec) {
+            try Multihash.checkDigestLength(digest.count, against: function)
+        }
+        guard let multihash = Multihash.encoding(digest: digest, code: codec.code) else {
+            throw MultihashError.lengthNotSupported
+        }
+        self = multihash
     }
 
-    /// Initialize a Multihash from a B58 Encoded String
-    public init(b58String str: String) throws {
-        self = try fromB58String(str)
+    /// Rejects a digest longer than `function` can produce.
+    ///
+    /// Shorter is legal, the spec permits truncation. ``HashFunction/identity`` has no fixed
+    /// length, so nothing is checked for it.
+    private static func checkDigestLength(
+        _ length: Int,
+        against function: HashFunction
+    ) throws(MultihashError) {
+        guard let expected = function.digestLength, length > expected else { return }
+        throw .digestTooLongForHashFunction(function, expected: expected, actual: length)
     }
 
-    /// A Multibase Encoded Hash
-    public init(multibase: String, codec: Codecs) throws {
-        let d = try BaseEncoding.decode(multibase)
-        let v = try encodeMultihashBuffer(Array(d.data), asHashType: codec)
-        // Ensure the produced buffer round-trips before initializing
-        let _ = try decodeMultihashBuffer(v)
-        self.value = v
-    }
+    /// Builds the Multihash buffer for `digest` under `code`, or `nil` if the digest is too long
+    /// for its length prefix.
+    private static func encoding(digest: some Collection<UInt8>, code: UInt64) -> Multihash? {
+        let length = digest.count
+        // The digest length is stored as a VarInt, keep it within the range the decoder accepts.
+        guard length <= Int(Int32.max) else { return nil }
 
-    /// Initialize a Multihash from a Multibase compliant Multihash String
+        // Both prefixes MUST be uVarInts so codes & lengths >= 128 (md5 == 0xd5) round-trip.
+        let codePrefix = code.varIntBytes
+        let lengthPrefix = UInt64(length).varIntBytes
+        let digestStart = codePrefix.count + lengthPrefix.count
+
+        var value = [UInt8]()
+        value.reserveCapacity(digestStart + length)
+        value.append(contentsOf: codePrefix)
+        value.append(contentsOf: lengthPrefix)
+        value.append(contentsOf: digest)
+
+        return Multihash(value: value, code: code, length: length, digestStart: digestStart)
+    }
+}
+
+// MARK: - Hashing
+
+extension Multihash {
+
+    /// Hashes `bytes` and prefixes the digest.
+    ///
+    /// ```swift
+    /// let mh = Multihash(hashing: "multihash".utf8, with: .sha2_256)
+    /// mh.asString(base: .base58btc)  // "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
     /// ```
-    /// //Example
+    ///
+    /// - Parameters:
+    ///   - bytes: The bytes to hash.
+    ///   - function: The hash function to hash `bytes` with.
+    ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest. `nil` keeps the
+    ///     whole digest.
+    public init(
+        hashing bytes: some Collection<UInt8>,
+        with function: HashFunction,
+        truncatedTo length: Int? = nil
+    ) {
+        let digest = function.hash(bytes)
+        let truncated = length.map { digest.prefix($0) } ?? digest[...]
+        // this only ever returns nil if the digest exceeds the hash function's digest
+        // length which can't happen here so force unwrapping the optional is okay
+        self = Multihash.encoding(digest: truncated, code: function.codec.code)!
+    }
+
+    /// Hashes `bytes` and wraps the digest.
+    ///
+    /// - Parameters:
+    ///   - bytes: The bytes to hash.
+    ///   - codec: The codec of the hash function to hash `bytes` with.
+    ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
+    /// - Throws:
+    ///   - ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
+    ///     this package can compute.
+    public init(
+        hashing bytes: some Collection<UInt8>,
+        codec: Codecs,
+        truncatedTo length: Int? = nil
+    ) throws(MultihashError) {
+        guard let function = HashFunction(codec: codec) else {
+            throw MultihashError.unsupportedHashFunction(codec)
+        }
+        self.init(hashing: bytes, with: function, truncatedTo: length)
+    }
+
+    /// Hashes a string's encoded bytes and wraps the digest.
+    ///
+    /// ```swift
+    /// let mh = try Multihash(hashing: "multihash", with: .sha2_256)
+    /// mh.asString(base: .base16)  // "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - string: The string whose bytes should be hashed.
+    ///   - function: The hash function to hash the bytes with.
+    ///   - encoding: The encoding to convert `string` into bytes with (defaults to utf8).
+    ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
+    /// - Throws:
+    ///   - ``MultihashError/invalidStringEncoding(_:)`` if `string` can't be represented in
+    ///     `encoding`.
+    public init(
+        hashing string: String,
+        with function: HashFunction,
+        using encoding: String.Encoding = .utf8,
+        truncatedTo length: Int? = nil
+    ) throws(MultihashError) {
+        guard let data = string.data(using: encoding) else {
+            throw MultihashError.invalidStringEncoding(encoding)
+        }
+        self.init(hashing: data, with: function, truncatedTo: length)
+    }
+
+    /// Hashes a string's encoded bytes and wraps the digest.
+    ///
+    /// - Parameters:
+    ///   - string: The string whose bytes should be hashed.
+    ///   - codec: The codec of the hash function to hash `bytes` with.
+    ///   - encoding: The encoding to convert `string` into bytes with (defaults to utf8).
+    ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
+    /// - Throws:
+    ///   - ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
+    ///   this package can compute
+    ///   - ``MultihashError/invalidStringEncoding(_:)`` if `string` can't be represented in `encoding`.
+    public init(
+        hashing string: String,
+        codec: Codecs,
+        using encoding: String.Encoding = .utf8,
+        truncatedTo length: Int? = nil
+    ) throws(MultihashError) {
+        guard let function = HashFunction(codec: codec) else {
+            throw MultihashError.unsupportedHashFunction(codec)
+        }
+        try self.init(hashing: string, with: function, using: encoding, truncatedTo: length)
+    }
+}
+
+// MARK: - Strings
+
+extension Multihash {
+
+    /// Initializes a Multihash from a Multibase encoded Multihash string.
+    ///
+    /// ```swift
     /// // "f111488c2f11fb2ce392acb5b2986e640211c4690073e"
     /// //    f       11      14     88c2f11fb2ce392acb5b2986e640211c4690073e
-    /// // <base16> <sha1> <20 bits> <sha1 digest>
-    /// let mh = try Multihash(multihash: "f111488c2f11fb2ce392acb5b2986e640211c4690073e")
-    /// print(mh.name) // => "sha1"
-    /// print(mh.code) // =>  0x11
-    /// print(mh.digest.hexString) // => "88c2f11fb2ce392acb5b2986e640211c4690073e"
+    /// // <base16> <sha1> <20 bytes> <sha1 digest>
+    /// let mh = try Multihash(multibase: "f111488c2f11fb2ce392acb5b2986e640211c4690073e")
+    /// mh.hashName   // "sha1"
+    /// mh.code   // 0x11
     /// ```
-    public init(multihash: String) throws {
-        let raw = try BaseEncoding.decode(multihash)
-        try self.init(multihash: raw.data)
-    }
-    /// Initialize a Multihash from a Multibase compliant Multihash Data Buffer
-    public init(multihash: Data) throws {
-        let buf = Array(multihash)
-        try self.init(buf)
+    ///
+    /// - Parameter string: A Multibase encoded Multihash, *including* its base prefix. The prefix
+    ///   is what identifies the base, so it is required rather than guessed at.
+    /// - Throws:
+    ///   - ``MultihashError/invalidMultibase(_:)`` if `string` isn't valid Multibase.
+    ///   - Any other ``MultihashError`` if the decoded bytes aren't a valid Multihash.
+    public init(multibase string: String) throws(MultihashError) {
+        try self.init(Multihash.decodeMultibase(string))
     }
 
-    /// Initialize a Multihash from a raw string
+    /// Initializes a Multihash from a Multibase encoded *digest*, prefixing it appropriately.
+    ///
+    /// ```swift
+    /// let digest = Array("multihash".utf8).sha1().asString(base: .base16, withMultibasePrefix: true)
+    /// let mh = try Multihash(multibaseDigest: digest, code: .sha1)
     /// ```
-    /// //Example
-    /// let mh = try Multihash(raw: "multihash", hashedWith: .sha2_256)
-    /// print(mh.asString(base: .base16)    // => "12209cbc07c3f991725836a3aa2a581ca2029198aa420b9d99bc0e131d9f3e2cbe47"
-    /// print(mh.asString(base: .base32)    // => "CIQJZPAHYP4ZC4SYG2R2UKSYDSRAFEMYVJBAXHMZXQHBGHM7HYWL4RY="
-    /// print(mh.asString(base: .base58btc) // => "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
-    /// print(mh.asString(base: .base64)    // => "EiCcvAfD+ZFyWDajqipYHKICkZiqQgudmbwOEx2fPiy+Rw=="
-    /// ```
-    public init(
-        raw: String,
-        hashedWith codec: Codecs,
-        using encoding: String.Encoding = .utf8,
-        customByteLength: Int? = nil
-    ) throws {
-        guard let rawData = raw.data(using: encoding) else { throw MultihashError.unknownCode }
-        let d = Array(rawData)
-        try self.init(raw: d, hashedWith: codec, customByteLength: customByteLength)
+    ///
+    /// - Parameters:
+    ///   - string: A Multibase encoded digest, including its base prefix.
+    ///   - code: The codec of the hash function that produced the digest.
+    /// - Throws:
+    ///   - ``MultihashError/invalidMultibase(_:)`` if `string` isn't valid Multibase.
+    ///   - Any other ``MultihashError`` if the decoded digest can't be prefixed with `code`.
+    public init(multibaseDigest string: String, code: Codecs) throws(MultihashError) {
+        try self.init(digest: Multihash.decodeMultibase(string), codec: code)
     }
 
-    //    public convenience init(raw:String, hashedWith codec:Codecs, using encoding:String.Encoding = .utf8, customBitLength:Int? = nil) throws {
-    //        var bytes:Int? = nil
-    //        if let bits = customBitLength { bytes = bits / 8 }
-    //        try self.init(raw: raw, hashedWith: codec, using: encoding, customByteLength: bytes)
-    //    }
-
-    public init(raw: Data, hashedWith codec: Codecs, customByteLength: Int? = nil) throws {
-        try self.init(raw: Array(raw), hashedWith: codec, customByteLength: customByteLength)
-    }
-
-    /// Main Multihash Initializer
-    public init(raw d: [UInt8], hashedWith codec: Codecs, customByteLength: Int? = nil) throws {
-        var hashed: [UInt8]
-        switch codec {
-        case .identity:
-            hashed = d
-        case .md5:
-            hashed = d.md5()
-        case .sha1:
-            hashed = d.sha1()
-        case .sha2_256:
-            hashed = d.sha256()
-        case .sha2_512:
-            hashed = d.sha512()
-        case .sha3_224:
-            hashed = d.sha3(.sha224)
-        case .sha3_256:
-            hashed = d.sha3(.sha256)
-        case .sha3_384:
-            hashed = d.sha3(.sha384)
-        case .sha3_512:
-            hashed = d.sha3(.sha512)
-        case .keccak_224:
-            hashed = d.sha3(.keccak224)
-        case .keccak_256:
-            hashed = d.sha3(.keccak256)
-        case .keccak_384:
-            hashed = d.sha3(.keccak384)
-        case .keccak_512:
-            hashed = d.sha3(.keccak512)
-        default:
-            print("\(codec) is not supported...")
-            throw MultihashError.unknownCode
-        }
-
-        /// Constrain to custom byte length if one was specified
-        if let bytes = customByteLength { hashed = Array(hashed.prefix(bytes)) }
-
-        let v = try encodeMultihashBuffer(hashed, asHashType: codec)
-        // Ensure the produced buffer round-trips before initializing (catches encode/decode drift)
-        let _ = try decodeMultihashBuffer(v)
-        self.value = v
-    }
-
-    // MARK: Computed Properties
-
-    ///The code of the Hash algorithm used to compute the digest
-    public var code: Int? {
-        decoded?.code
-    }
-
-    ///The code of the Hash algorithm used to compute the digest
-    public var algorithm: Codecs? {
-        if let c = self.code {
-            return try? Codecs(c)
-        } else {
-            return nil
+    /// Decodes a Multibase string, reporting failures as ``MultihashError/invalidMultibase(_:)``.
+    ///
+    /// Multibase has its own typed error, so it gets folded into this module's error here rather
+    /// than at each call site. That is what lets the Multibase initializers use typed throws.
+    private static func decodeMultibase(_ string: String) throws(MultihashError) -> [UInt8] {
+        do {
+            return try string.multibase().bytes
+        } catch {
+            throw .invalidMultibase(error)
         }
     }
 
-    ///The name of the Hash algorithm used to compute the digest
-    public var name: String? {
-        decoded?.name
+    /// The entire Multihash (prefixes included) as a string in the specified base.
+    ///
+    /// ```swift
+    /// mh.asString(base: .base16)                             // "111488c2…"
+    /// mh.asString(base: .base16, withMultibasePrefix: true)  // "f111488c2…"
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - base: The base to encode into.
+    ///   - withMultibasePrefix: Whether to include the Multibase prefix identifying `base`.
+    public func asString(base: BaseEncoding, withMultibasePrefix prefix: Bool = false) -> String {
+        self.value.asString(base: base, withMultibasePrefix: prefix)
     }
 
-    ///Length of the digest in Bytes
-    public var length: Int? {
-        decoded?.length
-    }
-
-    ///The hashed digest (without codec and length prefix)
-    public var digest: [UInt8]? {
-        decoded?.digest
-    }
-
-    /// Returns `true` if hashing `raw` with this multihash's algorithm (and digest length)
-    /// reproduces this exact multihash. Useful for verifying that a payload matches a known hash.
-    public func matches(raw: [UInt8]) -> Bool {
-        guard let algorithm = algorithm, let length = length else { return false }
-        guard let other = try? Multihash(raw: raw, hashedWith: algorithm, customByteLength: length) else {
-            return false
-        }
-        return other == self
-    }
-
-    /// Returns `true` if hashing `raw` with this multihash's algorithm (and digest length)
-    /// reproduces this exact multihash.
-    public func matches(raw: Data) -> Bool {
-        matches(raw: Array(raw))
-    }
-
-    ///The entire multihash value (prefix's included) as a multibase compliant string in the specified base
-    ///- Note: Includes the appropriate Multibase prefix
-    public func asMultibase(_ base: BaseEncoding) -> String {
-        self.value.asString(base: base, withMultibasePrefix: true)
-    }
-
-    ///The entire multihash value (prefix's included) as a string in the specified base
-    /// - Note: does not include the Multibase compliant prefix
-    public func asString(base: BaseEncoding) -> String {
-        self.value.asString(base: base, withMultibasePrefix: false)
-    }
-
-    /// A debug description of the Multihash
+    /// The Multihash as a base58btc string, the form Multihashes are conventionally written in.
+    ///
+    /// ```swift
+    /// print(mh)  // "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
+    /// ```
+    ///
+    /// - Note: This is the bare base58btc string, without the `z` Multibase prefix, matching how
+    ///   PeerIDs and CIDv0s are written. Use `asString(base:withMultibasePrefix: true)` for a
+    ///   Multibase compliant string.
     public var description: String {
-        guard let n = name, let c = code, let l = length, let d = digest else { return "NIL" }
-        return String(format: "Multihash: %@ 0x%X %d %@\n", n, c, l, d.asString(base: .base16))
-    }
-
-    /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
-    public var hexString: String {
-        self.asString(base: .base16)
-    }
-
-    /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
-    public var b58String: String {
         self.asString(base: .base58btc)
     }
 
-    /// Returns the entire Multihash value (prefixs included) as a hexadecimal string
-    public var string: String {
-        self.hexString
+    /// The Multihash's parts spelled out, for debugging.
+    ///
+    /// ```swift
+    /// "Multihash: sha1 0x11 20 88c2f11fb2ce392acb5b2986e640211c4690073e"
+    /// ```
+    public var debugDescription: String {
+        let name = self.hashName ?? "unknown"
+        let code = String(self.code, radix: 16, uppercase: true)
+        let digest = self.digest.asString(base: .base16)
+        return "Multihash: \(name) 0x\(code) \(self.digestLength) \(digest)"
     }
 }
 
+// MARK: - Verification
+
 extension Multihash {
+
+    /// Whether hashing `bytes` with this Multihash's hash function reproduces this exact Multihash.
+    ///
+    /// Useful for checking that a payload matches a hash it was advertised under. The digest length
+    /// is honoured, so a truncated Multihash compares against an equally truncated digest.
+    ///
+    /// - Returns: `false` if the bytes don't match, *and* `false` if this Multihash's hash function
+    ///   can't be computed here. Use ``matching(_:)`` to tell those two apart.
+    public func matches(_ bytes: some Collection<UInt8>) -> Bool {
+        (try? self.matching(bytes)) ?? false
+    }
+
+    /// Whether hashing `bytes` with this Multihash's hash function reproduces this exact Multihash.
+    ///
+    /// - Throws:
+    ///   - ``MultihashError/unsupportedHashFunction(_:)`` if this Multihash's hash function
+    ///   isn't one this package can compute, so an unverifiable payload can be told apart from a
+    ///   mismatched one.
+    public func matching(_ bytes: some Collection<UInt8>) throws(MultihashError) -> Bool {
+        guard let function = self.hashFunction else {
+            throw MultihashError.unsupportedHashFunction(self.algorithm ?? .identity)
+        }
+        // Compare digests directly
+        return function.hash(bytes).prefix(self.digestLength).elementsEqual(self.digest)
+    }
+}
+
+// MARK: - Conformances
+
+extension Multihash {
+    /// Compares the raw Multihash buffers.
+    ///
+    /// Everything is derived from the digest, so just compare them.
     public static func == (lhs: Multihash, rhs: Multihash) -> Bool {
         lhs.value == rhs.value
     }
 
+    /// Hashes the raw Multihash buffer. See ``==(_:_:)``.
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(value)
+        hasher.combine(self.value)
+    }
+}
+
+extension Multihash: RandomAccessCollection {
+    public typealias Element = UInt8
+    public typealias Index = Int
+
+    /// - Warning: An index into the *entire* buffer, prefixes included, not into the digest.
+    public var startIndex: Int { self.value.startIndex }
+
+    /// - Warning: An index into the *entire* buffer, prefixes included, not into the digest.
+    public var endIndex: Int { self.value.endIndex }
+
+    public subscript(position: Int) -> UInt8 { self.value[position] }
+}
+
+extension Multihash: ContiguousBytes {
+    /// Calls `body` with a contiguous view of the entire Multihash buffer, prefixes included.
+    ///
+    /// - Note: The pointer is only valid for the duration of the call.
+    public func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        try self.value.withUnsafeBytes(body)
     }
 }
 
 extension Multihash: Codable {
-    /// Decodes a Multihash from its raw multihash byte buffer.
+    /// Decodes a Multihash from its raw Multihash byte buffer.
+    ///
+    /// Reads the `Data` form written by ``encode(to:)``, and falls back to the `[UInt8]` form
+    /// written by 0.2.x so previously persisted values still decode.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        try self.init(try container.decode([UInt8].self))
+        if let data = try? container.decode(Data.self) {
+            try self.init(data)
+        } else {
+            try self.init(try container.decode([UInt8].self))
+        }
     }
 
-    /// Encodes the Multihash as its raw multihash byte buffer.
+    /// Encodes the Multihash as its raw Multihash byte buffer.
+    ///
+    /// Written as `Data`, which keeps binary coders compact and becomes a single base64 string in
+    /// JSON rather than an array of integers.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(value)
+        try container.encode(Data(self.value))
     }
-}
-
-extension Codecs {
-    public static var supportedHashAlgorithms: [Codecs] {
-        [
-            .md5, .sha1, .sha2_256, .sha2_512, .sha3_224, .sha3_256, .sha3_384, .sha3_512, .keccak_224, .keccak_256,
-            .keccak_384, .keccak_512,
-        ]
-    }
-
-    public var defaultHashLength: Int? {
-        switch self {
-        case .md5: return 16
-        case .sha1: return 20
-        case .sha3_224, .keccak_224: return 28
-        case .sha2_256, .sha3_256, .keccak_256: return 32
-        case .sha3_384, .keccak_384: return 48
-        case .sha2_512, .sha3_512, .keccak_512: return 64
-        //handle blake2b //0x40
-        //handle blake2s //0x41
-        //handle blake3
-        default:
-            return nil
-        }
-    }
-}
-
-public struct DecodedMultihash {
-    public let
-        code: Int,
-        name: String?,
-        length: Int,
-        digest: [UInt8]
-}
-
-/// Read and strip the unsigned variable int buffer size value from front of buffer
-///
-/// - Parameter buffer: The buffer prefixed with the size of the payload as an uvarint
-/// - Returns: the size as an int64 and the buffer with the uvarint indicating size removed.
-/// - Throws: MultihashError
-private func uVarInt(buffer: [UInt8]) throws -> (UInt64, [UInt8]) {
-    let (size, bytesRead) = VarInt.uVarInt(buffer)
-    if bytesRead == 0 { throw MultihashError.VarIntBufferTooShort }
-    if bytesRead < 0 { throw MultihashError.VarIntTooLarge }
-
-    // Return the size as read from the uvarint and the buffer without the uvarint
-    return (size, Array(buffer[bytesRead..<buffer.count]))
-}
-
-private func fromHexString(_ theString: String) throws -> Multihash {
-    let str = theString.count % 2 == 1 ? theString : BaseEncoding.base16.charPrefix + theString
-    let d = try BaseEncoding.decode(str).data
-
-    let buf = Array(d)
-    //let buf = try SwiftHex.decodeString(hexString: theString)
-
-    return try cast(buf)
-}
-
-private func fromB58String(_ str: String) throws -> Multihash {
-    let s = str.hasPrefix(BaseEncoding.base58btc.charPrefix) ? str : BaseEncoding.base58btc.charPrefix + str
-    let d = try BaseEncoding.decode(s).data
-
-    let buf = Array(d)
-    return try cast(buf)
-}
-
-private func cast(_ buf: [UInt8]) throws -> Multihash {
-    let dm = try decodeMultihashBuffer(buf)
-
-    if validCode(dm.code) == false {
-        throw MultihashError.unknownCode
-    }
-
-    return try Multihash(buf)
-}
-
-/// Decodes a Multihash compliant buffer into it's separate parts (digest, length, code and name)
-/// ```
-/// let multihashBuffer = Data(...) // 111488c2f11fb2ce392acb5b2986e640211c4690073e
-/// let decoded = try decodeMultihashBuffer(multihashBuffer)
-/// decoded.name   // => "sha1"
-/// decoded.code   // => 0x11
-/// decoded.digest // => 88c2f11fb2ce392acb5b2986e640211c4690073e (as hex)
-/// decoded.length // => 20
-/// ```
-public func decodeMultihashBuffer(_ buf: [UInt8]) throws -> DecodedMultihash {
-
-    // A valid multihash is at minimum two bytes: a code varint and a length varint
-    // (e.g. an empty `identity` digest is `0x00 0x00`).
-    if buf.count < 2 {
-        throw MultihashError.hashTooShort
-    }
-
-    let (code, buffer) = try uVarInt(buffer: buf)
-    let (digestLength, digest) = try uVarInt(buffer: buffer)
-
-    if digestLength > Int32.max {
-        throw MultihashError.hashTooLong
-    }
-
-    // Tolerate well-formed multihashes whose code isn't in our codec table by decoding
-    // with a `nil` name rather than failing the whole decode.
-    let name = (try? Codecs(code))?.name
-    let dm = DecodedMultihash(code: Int(code), name: name, length: Int(digestLength), digest: digest)
-
-    /// This is usually triggered when we try and instantiate a CID or PeerID as a Multihash...
-    if dm.digest.count != dm.length {
-        //print(dm.code)
-        //print(dm.digest)
-        //print(dm.length)
-        //print(dm.name)
-        //print(dm.digest.asString(base: .base58btc))
-        //print("WARNING: Inconsistent Multihash Length: Digest(\(dm.digest.count)) != Length(\(dm.length))")
-        throw MultihashError.inconsistentLength(dm.length)
-    }
-
-    return dm
-}
-
-/// Encode a hash digest along with the specified function code
-/// Note: The length is derived from the length of the digest.
-/// ```
-/// let hash = Array("multihash".data(using: .utf8).sha1()) // 88c2f11fb2ce392acb5b2986e640211c4690073e
-/// let multihashBuffer = try encodeMultihashBuffer(hash, code: 0x11) // 111488c2f11fb2ce392acb5b2986e640211c4690073e
-/// ```
-public func encodeMultihashBuffer(_ buf: [UInt8], code: Int?) throws -> [UInt8] {
-    guard let code = code, validCode(code) else {
-        throw MultihashError.unknownCode
-    }
-
-    // The digest length is stored as a varint; keep it within the range the decoder accepts.
-    if buf.count > Int(Int32.max) {
-        throw MultihashError.lengthNotSupported
-    }
-
-    // Multihash format: <varint hash function code><varint digest size in bytes><digest bytes>
-    // Both prefixes MUST be unsigned varints so codes/lengths >= 128 (e.g. md5 == 0xd5) round-trip.
-    var pre = putUVarInt(UInt64(code))
-    pre.append(contentsOf: putUVarInt(UInt64(buf.count)))
-    pre.append(contentsOf: buf)
-
-    return pre
-}
-
-/// Prepends the appropriate multihash prefixes to the given buffer
-/// ```
-/// let hash = Array("multihash".data(using: .utf8).sha1()) // 88c2f11fb2ce392acb5b2986e640211c4690073e
-/// let multihashBuffer = try encodeMultihashBuffer(hash, asHashType: .sha1) // 111488c2f11fb2ce392acb5b2986e640211c4690073e
-/// ```
-public func encodeMultihashBuffer(_ buf: [UInt8], asHashType: Codecs) throws -> [UInt8] {
-    try encodeMultihashBuffer(buf, code: Int(asHashType.code))
-}
-
-/// Prepends the appropriate multihash prefixes to the given buffer
-/// ```
-/// let hash = Array("multihash".data(using: .utf8).sha1()) // 88c2f11fb2ce392acb5b2986e640211c4690073e
-/// let multihashBuffer = try encodeMultihashBuffer(hash, asHashType: "sha1") // 111488c2f11fb2ce392acb5b2986e640211c4690073e
-/// ```
-public func encodeMultihashBuffer(_ buf: [UInt8], asHashType: String) throws -> [UInt8] {
-    try encodeMultihashBuffer(buf, asHashType: try Codecs(asHashType))
-}
-
-/// ValidCode checks whether a multihash code is valid.
-private func validCode(_ code: Int?) -> Bool {
-
-    if let c = code {
-        if appCode(c) == true {
-            return true
-        }
-
-        if Codecs.supportedHashAlgorithms.contains(where: { $0 == c }) {
-            return true
-        }
-    }
-    return false
-}
-
-/// AppCode checks whether a multihash code is part of the App range.
-private func appCode(_ code: Int) -> Bool {
-    code >= 0 && code < 0x10
 }
