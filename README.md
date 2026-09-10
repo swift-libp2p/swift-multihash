@@ -112,6 +112,26 @@ try mh.matching(payload)                  // throws .unsupportedHashFunction ins
 ```
 
 ### API
+
+Every throwing member below is `throws(MultihashError)`, so one `catch` covers the whole API and
+the bound error is typed rather than `any Error`. Multibase failures arrive wrapped as
+`.invalidMultibase(MultibaseError)`, with the underlying cause preserved:
+
+```Swift
+do {
+    let mh = try Multihash(multibase: string)
+} catch {
+    switch error {                                   // `error` is a MultihashError
+    case .invalidMultibase(let cause): …             // and `cause` is a MultibaseError
+    case .digestTooLongForHashFunction(_, let expected, let actual): …
+    default: …
+    }
+}
+
+// or match a specific nested cause directly
+catch MultihashError.invalidMultibase(.unknownBase) { … }
+```
+
 ```Swift
 
 /// Hashing, non-throwing when using a HashFunction, throwing when using a Codec
@@ -132,6 +152,7 @@ Multihash.decode(prefixed:) -> (multihash: Multihash, remaining: SubSequence) th
 Collection<UInt8>.multihash() -> (multihash: Multihash, bytes: SubSequence) throws
 Multihash(multibase: String) throws                                // prefix required
 Multihash(multibaseDigest: String, code: Codecs) throws            // a bare digest, not a multihash
+// ^ both report a bad multibase string as MultihashError.invalidMultibase(_:)
 
 /// Properties, parsed once at init, non-optional
 Multihash.value: [UInt8]          // the whole buffer, prefixes included
