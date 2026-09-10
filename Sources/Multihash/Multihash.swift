@@ -380,11 +380,11 @@ extension Multihash {
     /// - Parameter string: A multibase encoded Multihash, *including* its base prefix. The prefix
     ///   is what identifies the base, so it is required rather than guessed at.
     /// - Throws:
-    ///   - `BaseEncoding.MultibaseError` if `string` isn't valid multibase.
+    ///   - `MultibaseError` if `string` isn't valid multibase.
     ///   - ``MultihashError`` if the decoded data isn't a valid Multihash.
     public init(multibase string: String) throws {
-        let decoded = try BaseEncoding.decode(string)
-        try self.init(decoded.data)
+        let (_, bytes) = try string.multibase()
+        try self.init(bytes)
     }
 
     /// Initializes a Multihash from a Multibase encoded *digest*, prefixing it appropriately.
@@ -398,11 +398,11 @@ extension Multihash {
     ///   - string: A multibase encoded digest, including its base prefix.
     ///   - code: The codec of the hash function that produced the digest.
     /// - Throws:
-    ///   - `BaseEncoding.MultibaseError` if `string` isn't valid multibase.
+    ///   - `MultibaseError` if `string` isn't valid multibase.
     ///   - ``MultihashError`` if the decoded data isn't a valid Multihash.
     public init(multibaseDigest string: String, code: Codecs) throws {
-        let decoded = try BaseEncoding.decode(string)
-        try self.init(digest: decoded.data, codec: code)
+        let (_, digest) = try string.multibase()
+        try self.init(digest: digest, codec: code)
     }
 
     /// The entire Multihash (prefixes included) as a string in the specified base.
@@ -440,8 +440,7 @@ extension Multihash {
     public var debugDescription: String {
         let name = self.hashName ?? "unknown"
         let code = String(self.code, radix: 16, uppercase: true)
-        // Multibase's `asString` is declared on `Array`/`Data`, not on slices, hence the copy.
-        let digest = Array(self.digest).asString(base: .base16)
+        let digest = self.digest.asString(base: .base16)
         return "Multihash: \(name) 0x\(code) \(self.digestLength) \(digest)"
     }
 }

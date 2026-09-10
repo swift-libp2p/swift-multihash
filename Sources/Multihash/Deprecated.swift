@@ -76,8 +76,8 @@ extension Multihash {
     @available(*, deprecated, message: "Use `Multihash(multibase:)`, which requires the base prefix.")
     public init(multihash: String) throws {
         // Preserved verbatim: decodes whatever base the leading prefix names.
-        let raw = try BaseEncoding.decode(multihash)
-        try self.init(raw.data)
+        let (_, bytes) = try multihash.multibase()
+        try self.init(bytes)
     }
 
     @available(*, deprecated, message: "Use `Multihash(_:)`, which takes any byte collection.")
@@ -86,28 +86,30 @@ extension Multihash {
     }
 
     /// - Note: The replacement doesn't guess at prefixes. Decode the string yourself with
-    ///   `Array<UInt8>(decoding: str, as: .base16)` and pass the bytes to `Multihash(_:)`.
-    @available(*, deprecated, message: "Use `try Multihash(Array<UInt8>(decoding: str, as: .base16))`.")
+    ///   `BaseEncoding.decode(str, as: .base16)` and pass the bytes to `Multihash(_:)`.
+    @available(*, deprecated, message: "Use `try Multihash(BaseEncoding.decode(str, as: .base16))`.")
     public init(hexString str: String) throws {
         // Preserved verbatim, including the odd-length heuristic that treats the first character
         // as an already-present multibase prefix.
-        let prefixed = str.count % 2 == 1 ? str : BaseEncoding.base16.charPrefix + str
-        try self.init(try BaseEncoding.decode(prefixed).data)
+        let prefixed = str.count % 2 == 1 ? str : String(BaseEncoding.base16.prefix) + str
+        let (_, bytes) = try prefixed.multibase()
+        try self.init(bytes)
     }
 
     /// - Note: The replacement doesn't guess at prefixes. This shim prepends `z` unless the string
     ///   already starts with one, which misreads any base58btc Multihash that legitimately begins
     ///   with `z`.
-    @available(*, deprecated, message: "Use `try Multihash(Array<UInt8>(decoding: str, as: .base58btc))`.")
+    @available(*, deprecated, message: "Use `try Multihash(BaseEncoding.decode(str, as: .base58btc))`.")
     public init(b58String str: String) throws {
         // Preserved verbatim, prefix heuristic and all.
-        let prefixed =
-            str.hasPrefix(BaseEncoding.base58btc.charPrefix) ? str : BaseEncoding.base58btc.charPrefix + str
-        try self.init(try BaseEncoding.decode(prefixed).data)
+        let base58 = BaseEncoding.base58btc.prefix
+        let prefixed = str.unicodeScalars.first == base58 ? str : String(base58) + str
+        let (_, bytes) = try prefixed.multibase()
+        try self.init(bytes)
     }
 
     /// - Note: Renamed because the string holds a bare *digest*, not a Multihash.
-    @available(*, deprecated, renamed: "init(digestMultibase:code:)")
+    @available(*, deprecated, renamed: "init(multibaseDigest:code:)")
     public init(multibase: String, codec: Codecs) throws {
         try self.init(multibaseDigest: multibase, code: codec)
     }

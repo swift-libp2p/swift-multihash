@@ -398,7 +398,7 @@ struct MultihashRegressionTests {
         // Without the prefix the leading '5' names base10, which can't hold this string
         #expect(throws: (any Error).self) { try Multihash(multibase: bare) }
         // Decoding it explicitly is the replacement
-        #expect(try Multihash([UInt8](decoding: bare, as: .base58btc)) == mh)
+        #expect(try Multihash(BaseEncoding.decode(bare, as: .base58btc)) == mh)
     }
 }
 
