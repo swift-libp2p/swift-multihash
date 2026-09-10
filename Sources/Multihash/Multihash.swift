@@ -102,7 +102,7 @@ extension Multihash {
     ///
     /// - Parameter bytes: A buffer beginning with a Multihash.
     /// - Returns: The Multihash, and a slice of everything after it.
-    /// - Throws: A MultihashError:
+    /// - Throws:
     ///   - ``bufferTooShort`` or ``varIntBufferTooShort`` if `bytes` ends part way
     ///   through the Multihash
     ///   - ``invalidVarInt`` if a prefix isn't a valid minimally encoded 64 bit uVarInt
@@ -160,9 +160,11 @@ extension Multihash {
     /// ```
     ///
     /// - Parameter bytes: The Multihash buffer, prefixes included.
-    /// - Throws: ``MultihashError/trailingBytes`` if anything follows the digest, plus the usual
-    ///   ``MultihashError`` cases. Use ``decode(prefixed:)`` when the Multihash is embedded in a
-    ///   larger buffer.
+    /// - Throws:
+    ///   - ``MultihashError/trailingBytes`` if anything follows the digest
+    ///   - any other ``MultihashError``.
+    ///
+    /// - Note: Use ``decode(prefixed:)`` when the Multihash is embedded in a larger buffer.
     public init(_ bytes: some Collection<UInt8>) throws(MultihashError) {
         let (multihash, remaining) = try Multihash.decode(prefixed: bytes)
         guard remaining.isEmpty else { throw MultihashError.trailingBytes }
@@ -201,7 +203,8 @@ extension Multihash {
     /// - Parameters:
     ///   - digest: The precomputed digest.
     ///   - function: The hash function that produced `digest`.
-    /// - Throws: ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    /// - Throws:
+    ///   - ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
     ///   longer than `function` can produce.
     ///
     /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
@@ -216,9 +219,10 @@ extension Multihash {
     /// - Parameters:
     ///   - digest: The precomputed digest. Truncated digests are legal and are wrapped as-is.
     ///   - codec: The codec of the hash function that produced `digest`.
-    /// - Throws: ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
-    ///   longer than `codec`'s hash function can produce, or
-    ///   ``MultihashError/lengthNotSupported`` if it is too long to write a length prefix for.
+    /// - Throws:
+    ///   - ``MultihashError/digestTooLongForHashFunction(_:expected:actual:)`` if `digest` is
+    ///   longer than `codec`'s hash function can produce
+    ///   - ``MultihashError/lengthNotSupported`` if it is too long to write a length prefix for.
     ///
     /// - Note: Wrapped Multihashes should be treated as unverified / untrusted until proven valid
     ///   using ``matches(_:)`` or ``matching(_:)`` against the original bytes
@@ -300,8 +304,9 @@ extension Multihash {
     ///   - bytes: The bytes to hash.
     ///   - codec: The codec of the hash function to hash `bytes` with.
     ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
-    /// - Throws: ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
-    ///   this package can compute.
+    /// - Throws:
+    ///   - ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
+    ///     this package can compute.
     public init(
         hashing bytes: some Collection<UInt8>,
         codec: Codecs,
@@ -325,8 +330,9 @@ extension Multihash {
     ///   - function: The hash function to hash the bytes with.
     ///   - encoding: The encoding to convert `string` into bytes with (defaults to utf8).
     ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
-    /// - Throws: ``MultihashError/invalidStringEncoding(_:)`` if `string` can't be represented in
-    ///   `encoding`.
+    /// - Throws:
+    ///   - ``MultihashError/invalidStringEncoding(_:)`` if `string` can't be represented in
+    ///     `encoding`.
     public init(
         hashing string: String,
         with function: HashFunction,
@@ -346,9 +352,10 @@ extension Multihash {
     ///   - codec: The codec of the hash function to hash `bytes` with.
     ///   - encoding: The encoding to convert `string` into bytes with (defaults to utf8).
     ///   - truncatedTo: Keep only the leading `truncatedTo` bytes of the digest.
-    /// - Throws: ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
-    ///   this package can compute, or ``MultihashError/invalidStringEncoding(_:)`` if `string`
-    ///   can't be represented in `encoding`.
+    /// - Throws:
+    ///   - ``MultihashError/unsupportedHashFunction(_:)`` if `codec` isn't a hash function
+    ///   this package can compute
+    ///   - ``MultihashError/invalidStringEncoding(_:)`` if `string` can't be represented in `encoding`.
     public init(
         hashing string: String,
         codec: Codecs,
@@ -377,14 +384,13 @@ extension Multihash {
     /// mh.code   // 0x11
     /// ```
     ///
-    /// - Parameter string: A multibase encoded Multihash, *including* its base prefix. The prefix
+    /// - Parameter string: A Multibase encoded Multihash, *including* its base prefix. The prefix
     ///   is what identifies the base, so it is required rather than guessed at.
     /// - Throws:
-    ///   - `MultibaseError` if `string` isn't valid multibase.
-    ///   - ``MultihashError`` if the decoded data isn't a valid Multihash.
-    public init(multibase string: String) throws {
-        let (_, bytes) = try string.multibase()
-        try self.init(bytes)
+    ///   - ``MultihashError/invalidMultibase(_:)`` if `string` isn't valid Multibase.
+    ///   - Any other ``MultihashError`` if the decoded bytes aren't a valid Multihash.
+    public init(multibase string: String) throws(MultihashError) {
+        try self.init(Multihash.decodeMultibase(string))
     }
 
     /// Initializes a Multihash from a Multibase encoded *digest*, prefixing it appropriately.
@@ -395,14 +401,25 @@ extension Multihash {
     /// ```
     ///
     /// - Parameters:
-    ///   - string: A multibase encoded digest, including its base prefix.
+    ///   - string: A Multibase encoded digest, including its base prefix.
     ///   - code: The codec of the hash function that produced the digest.
     /// - Throws:
-    ///   - `MultibaseError` if `string` isn't valid multibase.
-    ///   - ``MultihashError`` if the decoded data isn't a valid Multihash.
-    public init(multibaseDigest string: String, code: Codecs) throws {
-        let (_, digest) = try string.multibase()
-        try self.init(digest: digest, codec: code)
+    ///   - ``MultihashError/invalidMultibase(_:)`` if `string` isn't valid Multibase.
+    ///   - Any other ``MultihashError`` if the decoded digest can't be prefixed with `code`.
+    public init(multibaseDigest string: String, code: Codecs) throws(MultihashError) {
+        try self.init(digest: Multihash.decodeMultibase(string), codec: code)
+    }
+
+    /// Decodes a Multibase string, reporting failures as ``MultihashError/invalidMultibase(_:)``.
+    ///
+    /// Multibase has its own typed error, so it gets folded into this module's error here rather
+    /// than at each call site. That is what lets the Multibase initializers use typed throws.
+    private static func decodeMultibase(_ string: String) throws(MultihashError) -> [UInt8] {
+        do {
+            return try string.multibase().bytes
+        } catch {
+            throw .invalidMultibase(error)
+        }
     }
 
     /// The entire Multihash (prefixes included) as a string in the specified base.
@@ -414,7 +431,7 @@ extension Multihash {
     ///
     /// - Parameters:
     ///   - base: The base to encode into.
-    ///   - withMultibasePrefix: Whether to include the multibase prefix identifying `base`.
+    ///   - withMultibasePrefix: Whether to include the Multibase prefix identifying `base`.
     public func asString(base: BaseEncoding, withMultibasePrefix prefix: Bool = false) -> String {
         self.value.asString(base: base, withMultibasePrefix: prefix)
     }
@@ -425,9 +442,9 @@ extension Multihash {
     /// print(mh)  // "QmYtUc4iTCbbfVSDNKvtQqrfyezPPnFvE33wFmutw9PBBk"
     /// ```
     ///
-    /// - Note: This is the bare base58btc string, without the `z` multibase prefix, matching how
+    /// - Note: This is the bare base58btc string, without the `z` Multibase prefix, matching how
     ///   PeerIDs and CIDv0s are written. Use `asString(base:withMultibasePrefix: true)` for a
-    ///   multibase compliant string.
+    ///   Multibase compliant string.
     public var description: String {
         self.asString(base: .base58btc)
     }
@@ -466,7 +483,7 @@ extension Multihash {
     ///   - ``MultihashError/unsupportedHashFunction(_:)`` if this Multihash's hash function
     ///   isn't one this package can compute, so an unverifiable payload can be told apart from a
     ///   mismatched one.
-    public func matching(_ bytes: some Collection<UInt8>) throws -> Bool {
+    public func matching(_ bytes: some Collection<UInt8>) throws(MultihashError) -> Bool {
         guard let function = self.hashFunction else {
             throw MultihashError.unsupportedHashFunction(self.algorithm ?? .identity)
         }
